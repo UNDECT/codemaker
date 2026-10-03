@@ -1,0 +1,4 @@
+playwright==1.63.0
+numpy>=1.24
+pillow>=10
+PyYAML>=6

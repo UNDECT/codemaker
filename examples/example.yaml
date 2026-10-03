@@ -1,0 +1,65 @@
+# 예시 설정 — 실제 사이트에 맞게 색상·좌표·글자를 바꿔 쓰세요.
+# 색상·좌표 고르는 법: python -m webmacro snapshot 이설정.yaml → snapshot.png 열어서 위치 확인
+#                     python -m webmacro color snapshot.png 850 420 → 그 위치 색상 출력
+
+url: https://example.com/work          # 매크로가 열 페이지
+viewport: {width: 1920, height: 1080}  # 화면 크기(좌표 기준). 집 PC 녹화 좌표와 맞추려면 동일하게
+session_file: state/session.json       # 로그인 상태 저장 위치
+interval: 2                            # 몇 초마다 화면을 확인할지
+idle_notify: 150                       # 150번(약 5분) 연속으로 맞는 상황이 없으면 알림
+max_actions_per_minute: 120            # 폭주 방지: 1분 동작 한도
+max_same_rule: 30                      # 같은 규칙이 30번 연속이면 화면이 멈춘 것으로 보고 일시정지
+pause_minutes: 30
+recheck_minutes: 10                    # 업무 종료 후 10분 뒤 새로고침해서 다시 감시 (0이면 프로그램 종료)
+
+# ── 액션패턴: 클릭·입력 순서 ──
+patterns:
+  로그인:
+    - {do: type, selector: "#id", text: "{env:SITE_ID}"}     # 비밀번호는 환경변수로
+    - {do: type, selector: "#pw", text: "{env:SITE_PW}"}
+    - {do: press, key: Enter}
+    - {do: wait, sec: 3}
+
+  결재완료:
+    - {do: click_match}                  # 조건에서 찾은 색상 위치 클릭
+    - {do: wait, sec: 1}
+    - {do: click, x: 960, y: 640}        # 고정 좌표 클릭
+    - {do: type, text: "처리완료"}
+    - {do: press, key: Enter}
+    - {do: wait, sec: 2}
+
+  반려처리:
+    - {do: click_match, target: 노란버튼}
+    - {do: wait_color, color: "#2E7D32", region: [800, 500, 1200, 700], timeout: 5, as: 확인}
+    - {do: click_match, target: 확인}
+    - {do: wait, sec: 2}
+
+# ── 규칙: 위에서부터 먼저 맞는 것 하나만 실행 ──
+rules:
+  - name: 로그아웃됨
+    when:
+      - url: /login
+    then: 로그인
+
+  - name: 빨간 버튼 → 결재
+    when:
+      - color: "#E53935"
+        tolerance: 20
+        region: [0, 150, 1920, 900]     # [x1, y1, x2, y2] 이 영역 안에서만 찾음
+        min_pixels: 50                  # 너무 작은 점은 무시
+        pick: first                     # 여러 개면 위→아래 순서 첫 번째
+    then: 결재완료
+
+  - name: 노란 버튼 + '반려' 글자 → 반려
+    when:
+      - color: "#FBC02D"
+        as: 노란버튼
+      - text: 반려 요청
+    then: 반려처리
+
+  - name: 할 일 없음 → 업무 종료
+    when:
+      - text: 처리할 항목이 없습니다
+    then:
+      - {do: screenshot, name: done}
+    after: stop                         # stop=매크로 종료, continue=계속 감시, pause=잠시 쉼
