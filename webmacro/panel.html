@@ -15,20 +15,20 @@
 @media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1f26;--fg:#e6e9ee;--mute:#9aa3af;--line:#2b323c;--acc:#60a5fa;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--soft:#1e2633}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
 header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top));display:flex;gap:10px;align-items:center}
 header h1{font-size:16px;margin:0}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;background:var(--soft)}
 .pill i{width:9px;height:9px;border-radius:50%;background:var(--mute)}
 .pill.run i{background:var(--ok);animation:pulse 1.4s infinite}.pill.pause i{background:var(--warn)}.pill.err i{background:var(--bad)}
 @keyframes pulse{50%{opacity:.3}}
-main{max-width:1100px;margin:0 auto;padding:12px;display:grid;gap:12px}
-.tab{display:none}.tab.on{display:grid;gap:12px}
+main{max-width:1100px;margin:0 auto;padding:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.tab{display:none;min-width:0}.tab.on{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;background:none;color:var(--mute);padding:10px 0 8px;font:inherit;font-size:13px;border-radius:0}
 nav button b{display:block;font-size:20px;line-height:1.1}
 nav button.on{color:var(--acc);font-weight:600}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
 .card h2{font-size:15px;margin:0 0 10px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 label{color:var(--mute);font-size:13px}
@@ -65,7 +65,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:13px}
 #shots figure{margin:0;font-size:11px;color:var(--mute)}
 #shots img{width:100%;border-radius:6px;border:1px solid var(--line);display:block}
 /* 화면 */
-#shotWrap{position:relative;margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:70vh;background:#000}
+#shotWrap{position:relative;max-width:100%;overscroll-behavior:contain;margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:70vh;background:#000}
 #shot:not([src]){display:none}
 #shotWrap:has(#shot:not([src]))::before{content:"'화면 새로고침'을 누르면 서버 브라우저 화면이 여기에 나옵니다";display:block;padding:24px;color:#9aa3af;text-align:center}
 #shot{display:block;width:100%;height:auto;cursor:crosshair;user-select:none;-webkit-user-drag:none;touch-action:none}
@@ -73,6 +73,10 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:13px}
 #mark{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid #fff;outline:2px solid #000;border-radius:50%;pointer-events:none;display:none}
 .pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .sw{width:22px;height:22px;border-radius:4px;border:1px solid var(--line)}
+#regWarn{display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(217,119,6,.12);color:var(--warn);font-size:14px;align-items:center;gap:8px;flex-wrap:wrap}
+#zoomBar{display:flex;gap:6px;align-items:center;margin-top:8px}
+#zoomBar button{min-width:40px;padding:6px 10px;white-space:nowrap;flex:none}
+#zoomPct{min-width:48px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;color:var(--mute)}
 .seg button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 textarea#yaml{width:100%;min-height:360px;font:13px/1.45 ui-monospace,Consolas,"D2Coding",monospace;white-space:pre;tab-size:2}
 pre#log{margin:0;max-height:300px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
@@ -168,7 +172,13 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
       <button id="insOcr" disabled>+ 글자(OCR) 조건</button>
       <button id="insRead" disabled>+ 글자 읽기 단계</button>
     </div>
+    <div id="regWarn"><span id="regWarnText"></span><button id="btnFit" class="pri">영역 자동 맞춤</button></div>
     <pre id="ocrOut" class="hint" style="display:none;margin:6px 0 0;white-space:pre-wrap"></pre>
+    <div id="zoomBar">
+      <button id="zOut" aria-label="축소">－</button><span id="zoomPct">100%</span><button id="zIn" aria-label="확대">＋</button>
+      <button id="zFit">맞춤</button>
+      <span class="hint">두 손가락: 확대·이동 · PC: Ctrl+휠</span>
+    </div>
     <div id="shotMsg" class="msg"></div>
     <div id="shotWrap"><img id="shot" alt=""><div id="sel"></div><div id="mark"></div></div>
     <canvas id="cv" hidden></canvas>
@@ -381,10 +391,11 @@ function setAuto() { clearInterval(autoTimer); if ($('auto').checked) autoTimer 
 $('auto').onchange = setAuto;
 $('btnShot').onclick = shot;
 
-function toImg(ev) {
+function toImg(ev) {   // 화면 좌표 → 원본 이미지 좌표 (이미지 밖이면 가장자리로)
   const img = $('shot'), r = img.getBoundingClientRect();
   const sx = img.naturalWidth / r.width, sy = img.naturalHeight / r.height;
-  return {x: Math.round((ev.clientX - r.left) * sx), y: Math.round((ev.clientY - r.top) * sy)};
+  const cl = (v, m) => Math.min(m - 1, Math.max(0, v));
+  return {x: cl(Math.round((ev.clientX - r.left) * sx), img.naturalWidth), y: cl(Math.round((ev.clientY - r.top) * sy), img.naturalHeight)};
 }
 function colorAt(x, y) {
   const img = $('shot'), cv = $('cv');
@@ -403,20 +414,67 @@ function drawMarks() {
 }
 window.addEventListener('resize', drawMarks);
 
-let down = null;
-$('shot').addEventListener('pointerdown', ev => { if (!$('shot').naturalWidth) return; ev.preventDefault(); down = toImg(ev); });
+// ---- 확대(핀치 줌) ----
+let zoom = 1;
+function applyZoom(z, cx, cy) {   // cx, cy: 고정할 점(뷰포트 좌표). 없으면 가운데
+  const wrap = $('shotWrap'), img = $('shot'), r = wrap.getBoundingClientRect();
+  z = Math.min(6, Math.max(1, z));
+  if (cx == null) { cx = r.left + wrap.clientWidth / 2; cy = r.top + wrap.clientHeight / 2; }
+  const px = (wrap.scrollLeft + cx - r.left) / zoom, py = (wrap.scrollTop + cy - r.top) / zoom;
+  zoom = z;
+  img.style.width = z === 1 ? '100%' : (wrap.clientWidth * z) + 'px';
+  wrap.scrollLeft = px * z - (cx - r.left); wrap.scrollTop = py * z - (cy - r.top);
+  $('zoomPct').textContent = Math.round(z * 100) + '%';
+  drawMarks();
+}
+$('zIn').onclick = () => applyZoom(zoom * 1.5);
+$('zOut').onclick = () => applyZoom(zoom / 1.5);
+$('zFit').onclick = () => applyZoom(1);
+$('shotWrap').addEventListener('wheel', ev => {
+  if (!ev.ctrlKey) return;
+  ev.preventDefault(); applyZoom(zoom * (ev.deltaY < 0 ? 1.2 : 1 / 1.2), ev.clientX, ev.clientY);
+}, {passive: false});
+
+const ptrs = new Map();
+let down = null, pinch = null;
+function mid() { const [a, b] = [...ptrs.values()]; return {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1}; }
+$('shot').addEventListener('pointerdown', ev => {
+  if (!$('shot').naturalWidth) return;
+  ev.preventDefault(); try { $('shot').setPointerCapture(ev.pointerId); } catch (_) {}
+  ptrs.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
+  if (ptrs.size === 2) {                 // 두 손가락 → 확대·이동, 선택 취소
+    down = null; previewSel(null);
+    const m = mid(), w = $('shotWrap');
+    pinch = {d0: m.d, z0: zoom, x: m.x, y: m.y, sl: w.scrollLeft, st: w.scrollTop};
+  } else if (ptrs.size === 1 && !pinch) down = toImg(ev);
+});
+$('shot').addEventListener('pointermove', ev => {
+  if (!ptrs.has(ev.pointerId)) return;
+  ptrs.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
+  if (pinch && ptrs.size === 2) {
+    const m = mid(), w = $('shotWrap');
+    applyZoom(pinch.z0 * m.d / pinch.d0, m.x, m.y);
+    w.scrollLeft += pinch.x - m.x; w.scrollTop += pinch.y - m.y;   // 두 손가락 이동 = 화면 이동
+    pinch.x = m.x; pinch.y = m.y;
+  } else if (down && mode === 'pick') {
+    const p = toImg(ev);
+    if (Math.abs(p.x - down.x) > 6 || Math.abs(p.y - down.y) > 6)
+      previewSel([Math.min(down.x, p.x), Math.min(down.y, p.y), Math.max(down.x, p.x), Math.max(down.y, p.y)]);
+  }
+});
+function endPtr(ev) { ptrs.delete(ev.pointerId); if (!ptrs.size) pinch = null; }
+$('shot').addEventListener('pointercancel', ev => { endPtr(ev); down = null; previewSel(null); });
 $('shot').addEventListener('pointerup', async ev => {
-  if (!down) return;
+  const wasPinch = !!pinch; endPtr(ev);
+  if (!down || wasPinch) { down = null; return; }
   const up = toImg(ev), d0 = down; down = null;
   if (mode === 'ctl') {
     try { const r = await api('/api/browser', {action:'click', x:up.x, y:up.y}); $('curUrl').textContent = r.url; setTimeout(shot, 300); }
     catch (e) { msg($('shotMsg'), e.message, false); }
     return;
   }
-  if (Math.abs(up.x - d0.x) > 6 || Math.abs(up.y - d0.y) > 6) {
-    region = [Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)];
-    $('preg').textContent = '[' + region.join(', ') + ']';
-    $('insRegion').disabled = $('btnOcr').disabled = $('insOcr').disabled = $('insRead').disabled = false;
+  if (Math.abs(up.x - d0.x) > 6 && Math.abs(up.y - d0.y) > 6) {
+    setRegion([Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)]);
   } else {
     const c = colorAt(up.x, up.y);
     pick = {x: up.x, y: up.y, color: c};
@@ -425,6 +483,41 @@ $('shot').addEventListener('pointerup', async ev => {
   }
   drawMarks();
 });
+function previewSel(r) {
+  const s = $('sel'), img = $('shot');
+  if (!r) { drawMarks(); return; }
+  const k = img.getBoundingClientRect().width / img.naturalWidth;
+  s.style.display = 'block'; s.style.left = r[0]*k+'px'; s.style.top = r[1]*k+'px'; s.style.width = (r[2]-r[0])*k+'px'; s.style.height = (r[3]-r[1])*k+'px';
+}
+
+// ---- 영역: 글자를 자르는지 점검 ----
+function setRegion(r) {
+  region = r; lastOcr = '';
+  $('preg').textContent = '[' + region.join(', ') + ']';
+  $('insRegion').disabled = $('btnOcr').disabled = $('insOcr').disabled = $('insRead').disabled = false;
+  drawMarks(); checkRegion();
+}
+function showCuts(cuts) {
+  const w = $('regWarn');
+  if (cuts && cuts.length) {
+    $('regWarnText').textContent = `⚠ 영역이 글자를 자르고 있습니다 (${cuts.join('·')}) — 잘못 읽힐 수 있어요`;
+    w.style.display = 'flex';
+  } else w.style.display = 'none';
+}
+let regionSeq = 0;
+async function checkRegion() {
+  const seq = ++regionSeq;
+  try { const r = await api('/api/region', {region}); if (seq === regionSeq) { showCuts(r.cuts); region._fit = r.suggested; } }
+  catch (_) {}
+}
+$('btnFit').onclick = async () => {
+  try {
+    const r = await api('/api/region', {region});
+    if (r.unfixed && r.unfixed.length) { toast('자동으로 못 맞췄습니다. 조금 더 넓게 다시 그려 보세요'); return; }
+    setRegion(r.suggested); toast('영역을 글자에 맞췄습니다');
+    if ($('ocrOut').style.display === 'block') $('btnOcr').click();
+  } catch (e) { toast(e.message); }
+};
 
 function setMode(m) {
   mode = m; $('mPick').classList.toggle('active', m === 'pick'); $('mCtl').classList.toggle('active', m === 'ctl');
@@ -485,7 +578,7 @@ $('insRegion').onclick = () => insertLine(`region: [${region.join(', ')}]`);
 let lastOcr = '';
 $('btnOcr').onclick = async () => {
   const out = $('ocrOut'); out.style.display = 'block'; out.textContent = '읽는 중…';
-  try { const r = await api('/api/ocr', {region}); lastOcr = r.text; out.textContent = '읽은 글자: ' + (r.text || '(없음)'); }
+  try { const r = await api('/api/ocr', {region}); lastOcr = r.text; out.textContent = '읽은 글자: ' + (r.text || '(없음)'); showCuts(r.cuts); }
   catch (e) { out.textContent = e.message; }
 };
 function ocrGuess() { return (lastOcr.split('\n')[0] || '찾을 글자').replace(/"/g, ''); }

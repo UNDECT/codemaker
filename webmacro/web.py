@@ -261,16 +261,26 @@ class Controller:
             return {"rule": rule.name, "pattern": rule.then, "positions": pos, "vars": eng.vars}
         return self.call(fn)
 
-    def ocr_region(self, region, lang: str = ocr.DEFAULT_LANG, psm: int = 6) -> str:
+    def ocr_region(self, region, lang: str = ocr.DEFAULT_LANG, psm: int = 6) -> dict:
         """영역 글자를 읽어 본다 (설정 만들 때 확인용)."""
         if region is not None:
-            region = tuple(int(v) for v in region)
-            if len(region) != 4:
-                raise ValueError("영역은 [x1, y1, x2, y2]")
+            region = _region_arg(region)
 
         def fn():
             img = self._ensure_driver().screenshot()
-            return ocr.read_text(img, region, lang=lang, psm=psm)
+            text = ocr.read_text(img, region, lang=lang, psm=psm)
+            return {"text": text, "cuts": ocr.edge_cuts(img, region) if region else []}
+        return self.call(fn)
+
+    def check_region(self, region) -> dict:
+        """영역이 글자를 자르는지 + 자동으로 맞춘 영역."""
+        region = _region_arg(region)
+
+        def fn():
+            img = self._ensure_driver().screenshot()
+            cuts = ocr.edge_cuts(img, region)
+            fit, left = ocr.fit_region(img, region)
+            return {"cuts": cuts, "suggested": list(fit), "unfixed": left}
         return self.call(fn)
 
     def start(self, dry_run: bool = False):
@@ -543,12 +553,14 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                     self._json(ctl.test_rules())
                 elif path == "/api/ocr":
                     try:
-                        text = ctl.ocr_region(body.get("region"), str(body.get("lang") or ocr.DEFAULT_LANG),
-                                              int(body.get("psm") or 6))
+                        r = ctl.ocr_region(body.get("region"), str(body.get("lang") or ocr.DEFAULT_LANG),
+                                           int(body.get("psm") or 6))
                     except ocr.OcrError as e:
                         self._json({"error": f"OCR 실패: {e}"}, 500)
                         return
-                    self._json({"text": text})
+                    self._json(r)
+                elif path == "/api/region":
+                    self._json(ctl.check_region(body.get("region")))
                 elif path == "/api/start":
                     ctl.start(dry_run=bool(body.get("dry_run")))
                     self._json({"ok": True})
@@ -589,6 +601,16 @@ def _icon(size: int) -> bytes:
         im.save(buf, "PNG")
         _ICONS[size] = buf.getvalue()
     return _ICONS[size]
+
+
+def _region_arg(region) -> tuple[int, int, int, int]:
+    try:
+        r = tuple(int(v) for v in region)
+    except (TypeError, ValueError):
+        raise ValueError("영역은 [x1, y1, x2, y2]") from None
+    if len(r) != 4 or r[2] <= r[0] or r[3] <= r[1]:
+        raise ValueError("영역은 [x1, y1, x2, y2]")
+    return r
 
 
 def _short(e: Exception) -> str:

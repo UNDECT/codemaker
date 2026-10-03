@@ -251,3 +251,16 @@ def test_progress_visible_while_running(panel):
     # 최근 사건만 받기
     last = m["events"][-1]["id"]
     assert req(base, f"/api/state?since={last}")[1]["monitor"]["events"] == []
+
+
+def test_region_check_endpoint(panel):
+    base, _, tmp = panel
+    (tmp / "r.html").write_text('<!doctype html><meta charset=utf-8><body style="margin:0;font-family:sans-serif">'
+                                '<div style="position:absolute;left:20px;top:60px;font-size:20px">처리할 항목이 없습니다</div>',
+                                encoding="utf-8")
+    req(base, "/api/settings", {"url": (tmp / "r.html").as_uri(), "width": 800, "height": 300})
+    code, r = req(base, "/api/region", {"region": [10, 50, 215, 95]})
+    assert code == 200 and r["cuts"] == ["오른쪽"] and r["unfixed"] == []
+    code, r2 = req(base, "/api/region", {"region": r["suggested"]})
+    assert r2["cuts"] == []
+    assert req(base, "/api/region", {"region": [5, 5, 1, 1]})[0] == 400

@@ -214,3 +214,61 @@ def test_real_mixed_korean_and_code(tmp_path, family, size):
         assert eng.vars["no"] == "4829"
     finally:
         d.close()
+
+
+# ---------- 영역이 글자를 자르는지 ----------
+REGION_PAGE = ('<!doctype html><meta charset=utf-8><body style="margin:0;font-family:sans-serif">'
+               '<div style="position:absolute;left:20px;top:20px;font-size:20px">대기 문서: 0건</div>'
+               '<div style="position:absolute;left:20px;top:60px;font-size:20px">처리할 항목이 없습니다</div>'
+               '<button style="position:absolute;left:400px;top:20px;width:120px;height:40px;background:#2E7D32;'
+               'color:#fff;border:0;font-size:16px">승인 A-1029</button>')
+
+
+@pytest.fixture(scope="module")
+def region_img():
+    pytest.importorskip("playwright.sync_api")
+    import io
+
+    from PIL import Image
+    from playwright.sync_api import sync_playwright
+
+    from webmacro.driver import _chromium_path
+    with sync_playwright() as p:
+        try:
+            b = p.chromium.launch()
+        except Exception:
+            path = _chromium_path()
+            if not path:
+                pytest.skip("Chromium 없음")
+            b = p.chromium.launch(executable_path=path)
+        pg = b.new_page(viewport={"width": 800, "height": 300})
+        pg.set_content(REGION_PAGE)
+        img = np.asarray(Image.open(io.BytesIO(pg.screenshot())).convert("RGB"))
+        b.close()
+    return img
+
+
+@pytest.mark.parametrize("region,cuts", [
+    ((10, 10, 200, 70), ["아래", "오른쪽"]),  # 둘째 줄 중간을 자르고, 둘째 줄 끝(오른쪽)도 자름
+    ((10, 50, 215, 95), ["오른쪽"]),         # 글자 사이 빈틈에 오른쪽 테두리
+    ((10, 10, 300, 50), []),                 # 한 줄을 넉넉히
+    ((405, 25, 515, 55), []),                # 버튼 안쪽 (바깥 흰 배경은 글자가 아님)
+    ((405, 25, 470, 55), ["오른쪽"]),        # 버튼 글자를 자름
+])
+def test_edge_cuts(region_img, region, cuts):
+    assert ocr.edge_cuts(region_img, region) == cuts
+
+
+@pytest.mark.parametrize("region", [(10, 10, 200, 70), (10, 50, 215, 95), (405, 25, 470, 55)])
+def test_fit_region_fixes_cut(region_img, region):
+    fit, left = ocr.fit_region(region_img, region)
+    assert left == [] and ocr.edge_cuts(region_img, fit) == []
+    w, h = fit[2] - fit[0], fit[3] - fit[1]
+    assert w < 260 and h < 80   # 글자 둘레로 딱 맞게 줄어듦
+
+
+@needs_tesseract
+def test_fit_region_improves_ocr(region_img):
+    bad = (10, 50, 215, 95)
+    fit, _ = ocr.fit_region(region_img, bad)
+    assert "없습니다" in ocr.squash(ocr.read_text(region_img, fit))
