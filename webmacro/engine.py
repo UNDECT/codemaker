@@ -13,6 +13,9 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
+import re
+
+from . import ocr
 from .color import find_blobs, pick_blob
 from .config import Config, Condition, Rule, expand_env
 from .driver import Driver
@@ -26,6 +29,9 @@ SESSION_SAVE_SEC = 600
 
 class StepFailed(Exception):
     pass
+
+
+_VAR_RE = re.compile(r"\{var:([^}]+)\}")
 
 
 class _Stop(Exception):
@@ -51,6 +57,10 @@ class Engine:
         self._errors = 0           # 새로고침 판단용(3회마다 초기화)
         self._fail_streak = 0      # 알림용 연속 실패 수
         self._last_session_save = clock()
+        self.vars: dict[str, str] = {}    # OCR로 읽은 값 (규칙 실행마다 새로)
+        self._pending_vars: dict[str, str] = {}
+        self._ocr_cache: dict = {}
+        self._ocr_warned = False
         self.history: list[str] = []  # 실행한 규칙 이름 (테스트·로그용)
 
     # ---------- 판단 ----------
@@ -69,20 +79,59 @@ class Engine:
             found = self.driver.has_selector(cond.value)
         elif cond.kind == "url":
             found = cond.value in self.driver.url()
+        elif cond.kind == "ocr":
+            try:
+                text = self._ocr(img, cond.region, cond.lang, cond.psm, cond.chars)
+            except ocr.OcrError as e:
+                # 글자를 못 읽으면 '있다/없다' 어느 쪽도 확신할 수 없으니 규칙을 실행하지 않는다
+                if not self._ocr_warned:
+                    self._ocr_warned = True
+                    log.error("OCR 실패: %s", e)
+                    self.notifier.send(f"OCR 실패: {e}")
+                return False
+            val = ocr.find(text, cond.value, cond.regex)
+            if val is None and _retry_eng(cond.lang, cond.value, cond.regex):
+                try:
+                    text = self._ocr(img, cond.region, "eng", cond.psm, cond.chars)
+                    val = ocr.find(text, cond.value, cond.regex)
+                except ocr.OcrError:
+                    pass
+            found = val is not None
+            if found and cond.name:
+                self._pending_vars[cond.name] = val if isinstance(val, str) else text
         else:  # pragma: no cover - config에서 걸러짐
             raise ValueError(cond.kind)
         return found != cond.absent
 
+    def _ocr(self, img, region, lang, psm, chars=None) -> str:
+        key = (region, lang, psm, chars)
+        if key not in self._ocr_cache:  # 같은 화면·영역은 한 번만 읽는다
+            self._ocr_cache[key] = ocr.read_text(img, region, lang=lang, psm=psm, chars=chars)
+        return self._ocr_cache[key]
+
     def evaluate(self, img) -> tuple[Rule, dict] | None:
+        """맞는 규칙과 색상 위치를 돌려준다. OCR로 뽑은 값은 self.vars 에 들어간다."""
         now = self.clock()
+        self._ocr_cache = {}
         for rule in self.cfg.rules:
             last = self._last_fired.get(rule.name)
             if rule.cooldown and last is not None and now - last < rule.cooldown:
                 continue
             matches: dict = {}
+            self._pending_vars = {}
             if all(self._check(c, img, matches) for c in rule.when):
+                self.vars = dict(self._pending_vars)
                 return rule, matches
         return None
+
+    def fill(self, text: str) -> str:
+        """{env:이름} → 환경변수, {var:이름} → OCR로 읽은 값."""
+        def sub(m):
+            name = m.group(1)
+            if name not in self.vars:
+                raise StepFailed(f"변수 {name!r} 가 없습니다 (read 단계나 ocr 조건의 as로 먼저 읽어야 함)")
+            return self.vars[name]
+        return _VAR_RE.sub(sub, expand_env(text))
 
     # ---------- 실행 ----------
     def _count_action(self):
@@ -107,8 +156,8 @@ class Engine:
         for i, step in enumerate(self.cfg.patterns[name]):
             act = step["do"]
             desc = f"{name}#{i + 1} {act}"
-            if self.dry_run and act != "run":
-                log.info("[dry-run] %s %s", desc, _brief(step, matches))
+            if self.dry_run and act not in ("run", "read"):  # read는 화면만 읽으므로 시험 실행에서도 수행
+                log.info("[dry-run] %s %s", desc, self._brief(step, matches))
                 continue
             if act in COUNTED:
                 self._count_action()
@@ -137,10 +186,10 @@ class Engine:
         elif act == "click_selector":
             d.click_selector(s["selector"], timeout=float(s.get("timeout", 5)))
         elif act == "click_text":
-            d.click_text(expand_env(str(s["text"])), exact=bool(s.get("exact", False)),
+            d.click_text(self.fill(str(s["text"])), exact=bool(s.get("exact", False)),
                          timeout=float(s.get("timeout", 5)))
         elif act == "type":
-            d.type(expand_env(str(s["text"])), selector=s.get("selector"),
+            d.type(self.fill(str(s["text"])), selector=s.get("selector"),
                    delay=float(s.get("delay", 0)))
         elif act == "press":
             d.press(str(s["key"]))
@@ -157,22 +206,65 @@ class Engine:
                 matches.setdefault(None, (b.x, b.y))
         elif act == "wait_text":
             self._wait_until(lambda: d.has_text(s["text"]), float(s.get("timeout", 10)), "글자")
+        elif act == "read":
+            img = d.screenshot()
+            lang = s.get("lang", ocr.DEFAULT_LANG)
+            text = ocr.read_text(img, s["region"], lang=lang, psm=int(s.get("psm", 6)), chars=s.get("chars"))
+            if s.get("pattern"):
+                val = ocr.find(text, str(s["pattern"]), regex=True)
+                if val is None and _retry_eng(lang, str(s["pattern"]), True):
+                    text2 = ocr.read_text(img, s["region"], lang="eng", psm=int(s.get("psm", 6)),
+                                          chars=s.get("chars"))
+                    val = ocr.find(text2, str(s["pattern"]), regex=True)
+                if val is None:
+                    raise StepFailed(f"읽은 글자에서 형식 {s['pattern']!r} 을 못 찾음: {text!r}")
+            else:
+                val = text
+            if not val or not str(val).strip():
+                raise StepFailed(f"영역 {list(s['region'])} 에서 글자를 못 읽음")
+            self.vars[s["as"]] = str(val)
+            log.info("읽음: %s = %r", s["as"], val)
+        elif act == "wait_ocr":
+            def seen():
+                img = d.screenshot()
+                lang, q, rx = s.get("lang", ocr.DEFAULT_LANG), str(s["text"]), bool(s.get("regex", False))
+                langs = [lang] + (["eng"] if _retry_eng(lang, q, rx) else [])
+                return any(ocr.find(ocr.read_text(img, s.get("region"), lang=lg, psm=int(s.get("psm", 6)),
+                                                  chars=s.get("chars")), q, rx) is not None for lg in langs)
+            self._wait_until(seen, float(s.get("timeout", 10)), "OCR 글자")
         elif act == "scroll":
             d.scroll(int(s.get("dx", 0)), int(s["dy"]))
         elif act == "goto":
-            d.goto(s["url"])
+            d.goto(self.fill(str(s["url"])))
         elif act == "reload":
             d.reload()
         elif act == "screenshot":
             self._shot(s.get("name", "shot"))
         elif act == "notify":
-            self.notifier.send(str(s["message"]))
+            self.notifier.send(self.fill(str(s["message"])))
         elif act == "run":
             if depth > 20:
                 raise StepFailed("run 중첩이 너무 깊습니다")
             self.run_pattern(s["pattern"], matches, depth + 1)
         elif act == "stop":
             raise _Stop(s.get("message", ""))
+
+    def _brief(self, step: dict, matches: dict) -> str:
+        if step["do"] == "click_match":
+            t = matches.get(step.get("target"))
+            if t:
+                return f"→ ({t[0] + int(step.get('dx', 0))}, {t[1] + int(step.get('dy', 0))})"
+        keys = {k: v for k, v in step.items() if k != "do"}
+        if "text" in keys:
+            raw = str(keys["text"])
+            if "{env:" in raw:
+                keys["text"] = "(환경변수)"
+            elif "{var:" in raw:
+                try:
+                    keys["text"] = self.fill(raw)
+                except StepFailed as e:
+                    keys["text"] = f"(변수 없음: {e})"
+        return str(keys) if keys else ""
 
     def _shot(self, name: str) -> Path | None:
         path = self.out_dir / f"{datetime.now():%Y%m%d-%H%M%S}-{name}.png"
@@ -303,12 +395,9 @@ class _Pause(Exception):
     pass
 
 
-def _brief(step: dict, matches: dict) -> str:
-    if step["do"] == "click_match":
-        t = matches.get(step.get("target"))
-        if t:
-            return f"→ ({t[0] + int(step.get('dx', 0))}, {t[1] + int(step.get('dy', 0))})"
-    keys = {k: v for k, v in step.items() if k != "do"}
-    if "text" in keys and "{env:" in str(keys["text"]):
-        keys["text"] = "(환경변수)"
-    return str(keys) if keys else ""
+def _retry_eng(lang: str, query: str, regex: bool) -> bool:
+    """한글+영어 모드는 한글 옆 영문·코드(PT-4829 → 21-4829)를 자주 틀린다.
+    못 찾았을 때 영어 전용으로 한 번 더 읽어 볼 가치가 있는지."""
+    if lang == "eng" or "eng" not in lang.split("+"):
+        return False
+    return regex or query.isascii()

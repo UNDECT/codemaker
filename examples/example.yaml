@@ -34,6 +34,13 @@ patterns:
     - {do: click_match, target: 확인}
     - {do: wait, sec: 2}
 
+  인증코드입력:                           # 화면에 보이는 코드를 읽어서 입력 (OCR)
+    - {do: read, region: [700, 400, 1000, 440], as: 코드, pattern: "(\\d{4,6})", chars: "0123456789"}
+    - {do: click_selector, selector: "#auth-code"}
+    - {do: type, text: "{var:코드}"}
+    - {do: press, key: Enter}
+    - {do: wait, sec: 2}
+
 # ── 규칙: 위에서부터 먼저 맞는 것 하나만 실행 ──
 rules:
   - name: 로그아웃됨
@@ -56,6 +63,12 @@ rules:
         as: 노란버튼
       - text: 반려 요청
     then: 반려처리
+
+  - name: 인증코드 화면 → 읽어서 입력
+    when:
+      - ocr: 인증코드                    # 화면 글자 인식(이미지 글자도 가능)
+        region: [600, 340, 1300, 400]
+    then: 인증코드입력
 
   - name: 할 일 없음 → 업무 종료
     when:

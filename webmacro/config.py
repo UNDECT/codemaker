@@ -27,6 +27,8 @@ ACTIONS = {
     "wait":           {"req": {"sec"}},
     "wait_color":     {"req": {"color"}, "opt": {"tolerance", "region", "min_pixels", "timeout", "as"}},
     "wait_text":      {"req": {"text"}, "opt": {"timeout"}},
+    "read":           {"req": {"region", "as"}, "opt": {"pattern", "lang", "psm", "chars"}},
+    "wait_ocr":       {"req": {"text"}, "opt": {"region", "timeout", "lang", "regex", "psm", "chars"}},
     "scroll":         {"req": {"dy"}, "opt": {"dx"}},
     "goto":           {"req": {"url"}},
     "reload":         {},
@@ -35,7 +37,8 @@ ACTIONS = {
     "run":            {"req": {"pattern"}},
     "stop":           {"opt": {"message"}},
 }
-CONDITIONS = {"color", "text", "selector", "url"}
+CONDITIONS = {"color", "text", "selector", "url", "ocr"}
+OCR_KEYS = {"region", "lang", "regex", "psm", "as", "chars"}
 AFTER = {"continue", "stop", "pause"}
 PICK = {"largest", "topmost", "leftmost", "first"}
 
@@ -46,14 +49,18 @@ class ConfigError(ValueError):
 
 @dataclass
 class Condition:
-    kind: str                  # color | text | selector | url
+    kind: str                  # color | text | selector | url | ocr
     value: Any
     absent: bool = False       # True면 '없을 때' 만족
     tolerance: int = 10
     region: tuple[int, int, int, int] | None = None
     min_pixels: int = 20
     pick: str = "largest"
-    name: str | None = None    # click_match target 이름
+    name: str | None = None    # color: click_match target 이름 / ocr: 읽은 값을 담을 변수 이름
+    lang: str = "kor+eng"      # ocr 언어
+    regex: bool = False        # ocr: 정규식으로 찾기 (괄호 그룹 = 뽑을 값)
+    psm: int = 6               # ocr: 6=여러 줄, 7=한 줄, 8=단어
+    chars: str | None = None   # ocr: 허용 글자 (예: "0123456789")
 
 
 @dataclass
@@ -114,9 +121,13 @@ def _condition(raw: dict, where: str) -> Condition:
         raise ConfigError(f"{where}: 조건은 dict여야 합니다")
     kinds = CONDITIONS & raw.keys()
     if len(kinds) != 1:
-        raise ConfigError(f"{where}: color/text/selector/url 중 하나만 지정하세요 ({sorted(raw)})")
+        raise ConfigError(f"{where}: color/text/selector/url/ocr 중 하나만 지정하세요 ({sorted(raw)})")
     kind = kinds.pop()
-    allowed = {kind, "absent"} | ({"tolerance", "region", "min_pixels", "pick", "as"} if kind == "color" else set())
+    allowed = {kind, "absent"}
+    if kind == "color":
+        allowed |= {"tolerance", "region", "min_pixels", "pick", "as"}
+    elif kind == "ocr":
+        allowed |= OCR_KEYS
     extra = set(raw) - allowed
     if extra:
         raise ConfigError(f"{where}: 알 수 없는 키 {sorted(extra)}")
@@ -132,10 +143,38 @@ def _condition(raw: dict, where: str) -> Condition:
         c.pick = raw.get("pick", "largest")
         if c.pick not in PICK:
             raise ConfigError(f"{where}: pick은 {sorted(PICK)} 중 하나")
-        c.name = raw.get("as")
+        c.name = _name(raw.get("as"), where)
+    elif kind == "ocr":
+        c.value = str(raw["ocr"])
+        c.region = _region(raw.get("region"), where)
+        c.lang = str(raw.get("lang", "kor+eng"))
+        c.regex = bool(raw.get("regex", False))
+        c.psm = int(raw.get("psm", 6))
+        c.chars = str(raw["chars"]) if raw.get("chars") is not None else None
+        c.name = _name(raw.get("as"), where)
+        if c.regex:
+            _compile(c.value, where)
+        if c.name and c.absent:
+            raise ConfigError(f"{where}: absent 조건에는 as를 쓸 수 없습니다")
     else:
         c.value = str(raw[kind])
     return c
+
+
+def _name(v, where: str):
+    """as: 이름 검사. YAML에서 no/yes/on/off 는 참·거짓으로 읽히므로 막는다."""
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (str, int)):
+        raise ConfigError(f"{where}: as 이름은 글자여야 합니다 (yes/no/on/off 는 따옴표로 감싸세요: as: \"no\")")
+    return str(v)
+
+
+def _compile(pattern: str, where: str):
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise ConfigError(f"{where}: 정규식 오류 {pattern!r}: {e}") from None
 
 
 def _step(raw, where: str, pattern_names: set[str]) -> dict:
@@ -153,12 +192,22 @@ def _step(raw, where: str, pattern_names: set[str]) -> dict:
     if extra:
         raise ConfigError(f"{where}: {act}에 알 수 없는 키 {sorted(extra)}")
     step = dict(raw)
+    if "as" in step:
+        step["as"] = _name(step["as"], where)
     if act == "wait_color":
         try:
             step["color"] = parse_color(raw["color"])
         except ValueError as e:
             raise ConfigError(f"{where}: {e}") from None
         step["region"] = _region(raw.get("region"), where)
+    if act in ("read", "wait_ocr"):
+        step["region"] = _region(raw.get("region"), where)
+        if act == "read" and step["region"] is None:
+            raise ConfigError(f"{where}: read에는 region이 필요합니다")
+        if act == "read" and raw.get("pattern"):
+            _compile(str(raw["pattern"]), where)
+        if act == "wait_ocr" and raw.get("regex"):
+            _compile(str(raw["text"]), where)
     if act == "run" and raw["pattern"] not in pattern_names:
         raise ConfigError(f"{where}: 없는 패턴 {raw['pattern']!r}")
     return step

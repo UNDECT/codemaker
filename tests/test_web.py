@@ -144,3 +144,25 @@ def test_stop_and_busy_and_autostart(panel):
     wait_for(lambda: not req(base, "/api/state")[1]["running"])
     assert req(base, "/api/state")[1]["last_result"] == "사용자 중지"
     assert not ctl.should_autostart()
+
+
+def test_ocr_endpoint(panel):
+    from webmacro import ocr
+    if not ocr.available():
+        pytest.skip("tesseract 미설치")
+    base, ctl, tmp = panel
+    (tmp / "o.html").write_text('<!doctype html><meta charset=utf-8><body style="margin:0">'
+                                '<div style="position:absolute;left:10px;top:10px;font-size:24px">주문번호 PT-4829</div>',
+                                encoding="utf-8")
+    req(base, "/api/settings", {"url": (tmp / "o.html").as_uri(), "width": 800, "height": 600})
+    code, r = req(base, "/api/ocr", {"region": [0, 0, 400, 60]})
+    assert code == 200 and "4829" in r["text"], r
+    text = req(base, "/api/config")[1]["yaml"]
+    text = text[:text.index("patterns:")] + (
+        "patterns:\n  p: [{do: type, text: '{var:주문번호}'}]\n"
+        "rules:\n  - name: 주문\n    when:\n"
+        "      - {ocr: 'PT-(\\d+)', regex: true, region: [0, 0, 400, 60], as: 주문번호}\n    then: p\n")
+    code, r = req(base, "/api/config", {"yaml": text})
+    assert code == 200, r
+    t = req(base, "/api/test", {})[1]
+    assert t["rule"] == "주문" and t["vars"] == {"주문번호": "4829"}

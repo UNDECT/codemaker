@@ -90,6 +90,13 @@ pre#log{margin:0;max-height:260px;overflow:auto;font:12px/1.4 ui-monospace,Conso
       <button id="insClick" disabled>+ 좌표 클릭 단계</button>
       <button id="insRegion" disabled>+ 영역</button>
     </div>
+    <div class="pick">
+      <button id="btnOcr" disabled title="드래그한 영역의 글자를 서버에서 읽어 봅니다">영역 글자 읽어보기</button>
+      <button id="insOcr" disabled>+ 글자(OCR) 조건</button>
+      <button id="insRead" disabled>+ 글자 읽기 단계</button>
+      <span class="hint">읽은 값은 입력 단계에서 <code>{var:이름}</code> 으로 씁니다.</span>
+    </div>
+    <pre id="ocrOut" class="hint" style="display:none;margin:6px 0 0;white-space:pre-wrap"></pre>
     <div id="shotMsg" class="msg"></div>
     <div id="shotWrap"><img id="shot" alt="서버 화면 (화면 새로고침을 누르세요)"><div id="sel"></div><div id="mark"></div></div>
     <canvas id="cv" hidden></canvas>
@@ -220,7 +227,8 @@ $('shot').addEventListener('pointerup', async ev => {
   }
   if (Math.abs(up.x - d0.x) > 6 || Math.abs(up.y - d0.y) > 6) {
     region = [Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)];
-    $('preg').textContent = '[' + region.join(', ') + ']'; $('insRegion').disabled = false;
+    $('preg').textContent = '[' + region.join(', ') + ']';
+    $('insRegion').disabled = $('btnOcr').disabled = $('insOcr').disabled = $('insRead').disabled = false;
   } else {
     const c = colorAt(up.x, up.y);
     pick = {x: up.x, y: up.y, color: c};
@@ -258,7 +266,8 @@ $('btnTest').onclick = async () => {
     if (!r.rule) msg($('shotMsg'), '지금 화면에 맞는 규칙이 없습니다 → 아무것도 누르지 않습니다.');
     else {
       const pos = Object.entries(r.positions || {}).map(([k, v]) => k + ' (' + v.join(', ') + ')').join(', ');
-      msg($('shotMsg'), `맞는 규칙: "${r.rule}" → 패턴 "${r.pattern}"` + (pos ? ' · 위치 ' + pos : ''), true);
+      const vars = Object.entries(r.vars || {}).map(([k, v]) => k + '=' + JSON.stringify(v)).join(', ');
+      msg($('shotMsg'), `맞는 규칙: "${r.rule}" → 패턴 "${r.pattern}"` + (pos ? ' · 위치 ' + pos : '') + (vars ? ' · 읽은 값 ' + vars : ''), true);
       const first = Object.values(r.positions || {})[0];
       if (first) {
         pick = {x:first[0], y:first[1], color:colorAt(first[0], first[1])};
@@ -283,6 +292,20 @@ function insertLine(text) {
 $('insColor').onclick = () => insertLine(`- {color: "${pick.color}", tolerance: 15${region ? ', region: [' + region.join(', ') + ']' : ''}}`);
 $('insClick').onclick = () => insertLine(`- {do: click, x: ${pick.x}, y: ${pick.y}}`);
 $('insRegion').onclick = () => insertLine(`region: [${region.join(', ')}]`);
+let lastOcr = '';
+$('btnOcr').onclick = async () => {
+  const out = $('ocrOut'); out.style.display = 'block'; out.textContent = '읽는 중…';
+  try { const r = await api('/api/ocr', {region}); lastOcr = r.text; out.textContent = '읽은 글자: ' + (r.text || '(없음)'); }
+  catch (e) { out.textContent = e.message; }
+};
+function ocrGuess() {  // 읽어본 글자의 첫 줄을 기본값으로
+  return (lastOcr.split('\n')[0] || '찾을 글자').replace(/"/g, '');
+}
+$('insOcr').onclick = () => insertLine(`- {ocr: "${ocrGuess()}", region: [${region.join(', ')}]}`);
+$('insRead').onclick = () => {
+  const name = prompt('읽은 값을 담을 이름 (입력할 때 {var:이름} 으로 사용)', '값');
+  if (name) insertLine(`- {do: read, region: [${region.join(', ')}], as: ${name}}`);
+};
 
 loadConfig().catch(e => msg($('yamlMsg'), e.message, false));
 </script>

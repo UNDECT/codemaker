@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 import yaml
 
 from . import config as config_mod
+from . import ocr
 from .driver import PlaywrightDriver
 from .engine import Engine
 from .notify import Notifier
@@ -251,7 +252,19 @@ class Controller:
                 return {"rule": None}
             rule, matches = hit
             pos = {("기본" if k is None else k): v for k, v in matches.items()}
-            return {"rule": rule.name, "pattern": rule.then, "positions": pos}
+            return {"rule": rule.name, "pattern": rule.then, "positions": pos, "vars": eng.vars}
+        return self.call(fn)
+
+    def ocr_region(self, region, lang: str = ocr.DEFAULT_LANG, psm: int = 6) -> str:
+        """영역 글자를 읽어 본다 (설정 만들 때 확인용)."""
+        if region is not None:
+            region = tuple(int(v) for v in region)
+            if len(region) != 4:
+                raise ValueError("영역은 [x1, y1, x2, y2]")
+
+        def fn():
+            img = self._ensure_driver().screenshot()
+            return ocr.read_text(img, region, lang=lang, psm=psm)
         return self.call(fn)
 
     def start(self, dry_run: bool = False):
@@ -434,6 +447,14 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None):
                     self._json({"ok": True, "url": url})
                 elif path == "/api/test":
                     self._json(ctl.test_rules())
+                elif path == "/api/ocr":
+                    try:
+                        text = ctl.ocr_region(body.get("region"), str(body.get("lang") or ocr.DEFAULT_LANG),
+                                              int(body.get("psm") or 6))
+                    except ocr.OcrError as e:
+                        self._json({"error": f"OCR 실패: {e}"}, 500)
+                        return
+                    self._json({"text": text})
                 elif path == "/api/start":
                     ctl.start(dry_run=bool(body.get("dry_run")))
                     self._json({"ok": True})
