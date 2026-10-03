@@ -42,8 +42,9 @@ class _Stop(Exception):
 class Engine:
     def __init__(self, cfg: Config, driver: Driver, notifier: Notifier | None = None,
                  dry_run: bool = False, out_dir: Path | None = None,
-                 clock=time.monotonic, sleep=time.sleep):
+                 clock=time.monotonic, sleep=time.sleep, on_event=None):
         self.cfg = cfg
+        self.on_event = on_event  # 진행 상황을 관리 화면에 알리는 콜백 (kind, **정보)
         self.driver = driver
         self.notifier = notifier or Notifier()
         self.dry_run = dry_run
@@ -62,6 +63,13 @@ class Engine:
         self._ocr_cache: dict = {}
         self._ocr_warned = False
         self.history: list[str] = []  # 실행한 규칙 이름 (테스트·로그용)
+
+    def emit(self, kind: str, **info):
+        if self.on_event:
+            try:
+                self.on_event(kind, **info)
+            except Exception:  # 화면 표시 오류로 매크로가 멈추면 안 된다
+                log.exception("진행 상황 기록 실패")
 
     # ---------- 판단 ----------
     def _check(self, cond: Condition, img, matches: dict) -> bool:
@@ -153,9 +161,13 @@ class Engine:
             self.sleep(0.3)
 
     def run_pattern(self, name: str, matches: dict, depth: int = 0):
-        for i, step in enumerate(self.cfg.patterns[name]):
+        steps = self.cfg.patterns[name]
+        for i, step in enumerate(steps):
             act = step["do"]
             desc = f"{name}#{i + 1} {act}"
+            if act != "run":
+                self.emit("step", pattern=_label(name), index=i + 1, total=len(steps), action=act,
+                          detail=self._human(step, matches))
             if self.dry_run and act not in ("run", "read"):  # read는 화면만 읽으므로 시험 실행에서도 수행
                 log.info("[dry-run] %s %s", desc, self._brief(step, matches))
                 continue
@@ -224,6 +236,7 @@ class Engine:
                 raise StepFailed(f"영역 {list(s['region'])} 에서 글자를 못 읽음")
             self.vars[s["as"]] = str(val)
             log.info("읽음: %s = %r", s["as"], val)
+            self.emit("read", name=s["as"], value=str(val))
         elif act == "wait_ocr":
             def seen():
                 img = d.screenshot()
@@ -248,6 +261,34 @@ class Engine:
             self.run_pattern(s["pattern"], matches, depth + 1)
         elif act == "stop":
             raise _Stop(s.get("message", ""))
+
+    def _human(self, step: dict, matches: dict) -> str:
+        """현황 화면용 짧은 설명 (비밀번호·환경변수 값은 숨김)."""
+        act = step["do"]
+        try:
+            if act == "click_match":
+                t = matches.get(step.get("target"))
+                return f"({t[0] + int(step.get('dx', 0))}, {t[1] + int(step.get('dy', 0))})" if t else ""
+            if act == "click":
+                return f"({step['x']}, {step['y']})"
+            if act in ("type", "click_text", "wait_text", "wait_ocr"):
+                raw = str(step["text"])
+                if "{env:" in raw:
+                    return "(비공개 값)"
+                return f"'{self.fill(raw) if '{var:' in raw else raw}'"[:60]
+            if act == "wait":
+                return f"{step['sec']:g}초"
+            if act in ("press",):
+                return str(step["key"])
+            if act in ("click_selector",):
+                return str(step["selector"])[:40]
+            if act == "read":
+                return f"→ {step['as']}"
+            if act == "goto":
+                return str(step["url"])[:60]
+        except (StepFailed, KeyError, TypeError, ValueError):
+            pass
+        return ""
 
     def _brief(self, step: dict, matches: dict) -> str:
         if step["do"] == "click_match":
@@ -283,6 +324,7 @@ class Engine:
         if hit is None:
             self._idle += 1
             self._same_rule = (None, 0)
+            self.emit("idle", streak=self._idle)
             if self.cfg.idle_notify and self._idle == self.cfg.idle_notify:
                 self._shot("idle")
                 self.notifier.send(f"{self._idle}회 연속으로 맞는 상황이 없습니다. 화면을 확인하세요.")
@@ -300,9 +342,12 @@ class Engine:
                  f"(위치 {matches.get(None)})" if matches.get(None) else "")
         self._last_fired[rule.name] = self.clock()
         self.history.append(rule.name)
+        self.emit("rule", rule=rule.name, pattern=_label(rule.then))
         try:
             self.run_pattern(rule.then, matches)
         except _Stop as e:
+            self.emit("done", rule=rule.name)
+            self.emit("stop", reason=e.message or rule.name)
             self.notifier.send(f"업무 종료: {e.message or rule.name}")
             return "stop"
         except _Pause as e:
@@ -311,10 +356,12 @@ class Engine:
             self._errors += 1
             self._fail_streak += 1
             log.error("단계 실패(%d회 연속): %s", self._fail_streak, e)
+            shot = None
             if self._fail_streak == 1 or self._fail_streak % 20 == 0:  # 알림 폭주 방지
                 shot = self._shot("error")
                 self.notifier.send(f"단계 실패({self._fail_streak}회 연속): {e}"
                                    + (f" / {shot.name}" if shot else ""))
+            self.emit("error", rule=rule.name, message=str(e), shot=shot.name if shot else None)
             if self._errors >= 3:
                 log.warning("연속 실패 → 페이지 새로고침")
                 try:
@@ -325,7 +372,9 @@ class Engine:
             return "error"
         self._errors = 0
         self._fail_streak = 0
+        self.emit("done", rule=rule.name)
         if rule.after == "stop":
+            self.emit("stop", reason=rule.name)
             self.notifier.send(f"업무 종료: {rule.name}")
             return "stop"
         if rule.after == "pause":
@@ -333,10 +382,12 @@ class Engine:
         return f"ran:{rule.name}"
 
     def _pause(self, reason: str, notify: bool = True) -> str:
+        shot = None
         if notify:
-            self._shot("pause")
+            shot = self._shot("pause")
             self.notifier.send(f"일시정지 {self.cfg.pause_minutes:g}분: {reason}")
         log.warning("일시정지: %s", reason)
+        self.emit("pause", reason=reason, minutes=self.cfg.pause_minutes, shot=shot.name if shot else None)
         self.sleep(self.cfg.pause_minutes * 60)
         self._same_rule = (None, 0)
         self._actions.clear()
@@ -357,6 +408,7 @@ class Engine:
                 log.exception("확인 중 오류")
                 if crashes == 1 or crashes % 10 == 0:
                     self.notifier.send(f"오류({crashes}회): {type(e).__name__}: {e}")
+                self.emit("crash", message=f"{type(e).__name__}: {e}", count=crashes)
                 if restart_driver is None:
                     raise
                 self.sleep(min(300, 5 * 2 ** min(crashes, 6)))
@@ -370,6 +422,7 @@ class Engine:
                 if not self.cfg.recheck_minutes:
                     return "stop"
                 log.info("%g분 후 다시 확인", self.cfg.recheck_minutes)
+                self.emit("waiting", minutes=self.cfg.recheck_minutes)
                 self.sleep(self.cfg.recheck_minutes * 60)
                 try:
                     self.driver.reload()
@@ -393,6 +446,11 @@ class Engine:
 
 class _Pause(Exception):
     pass
+
+
+def _label(pattern: str) -> str:
+    """규칙 안에 바로 적은 단계 목록(익명 패턴 __ruleN)은 화면에 '(규칙 내 단계)'로 보인다."""
+    return "(규칙 내 단계)" if pattern.startswith("__rule") else pattern
 
 
 def _retry_eng(lang: str, query: str, regex: bool) -> bool:

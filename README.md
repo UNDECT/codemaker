@@ -9,28 +9,23 @@
                                       └ 아무것도 안 맞으면 아무것도 누르지 않음
 ```
 
-## 0. 관리 화면 (가장 쉬운 방법)
+## 0. 관리 화면 (휴대폰·PC)
 
 ```bash
-python -m webmacro panel data/config.yaml          # → http://127.0.0.1:8080 접속 (설정 파일이 없으면 새로 만듦)
+python -m webmacro panel data/config.yaml          # → http://127.0.0.1:8080 (설정 파일이 없으면 새로 만듦)
 ```
 
-브라우저(PC·휴대폰)에서 아래를 모두 할 수 있습니다. 설정 파일을 직접 열 필요가 없습니다.
+아래 탭 3개로 나뉘어 있고, 휴대폰 화면에 맞춰져 있습니다. 브라우저 메뉴에서 **"홈 화면에 추가"**를 하면 앱처럼 열립니다.
 
-| 영역 | 하는 일 |
+| 탭 | 내용 |
 |---|---|
-| **1. 사이트 설정** | 업무 사이트 주소·화면 크기·확인 주기 입력 → "저장하고 열기" |
-| **2. 서버 화면** | 서버 브라우저가 보는 화면을 그대로 표시 (자동 새로고침 가능) |
-| └ 선택 모드 | 화면 클릭 → 좌표·색상 표시, 드래그 → 영역. "+ 색 조건 / + 좌표 클릭 단계 / + 영역" 버튼으로 아래 설정에 바로 넣기 |
-| └ 조작 모드 | 화면 클릭·글자 입력·Enter가 **서버 브라우저에서 실제로** 실행됨 → 여기서 로그인하고 "로그인 상태 저장" |
-| └ 영역 글자 읽어보기 | 드래그한 영역을 OCR로 읽어 결과 표시 → "+ 글자(OCR) 조건" / "+ 글자 읽기 단계" 버튼으로 바로 넣기 |
-| └ 지금 화면 판정 | 현재 화면에서 어떤 규칙이 맞는지, 읽힌 값까지 미리 확인 (아무것도 누르지 않음) |
-| **3. 규칙·액션패턴** | 설정 편집. 저장할 때 오류를 검사해서 잘못된 설정은 저장되지 않음 |
-| **상단 버튼** | ▶ 시작 / 시험 실행(클릭 없이 판단만 기록) / ■ 중지, 상태와 로그 |
+| **◉ 현황** | **지금 하는 일**(예: `'빨간 결재 버튼' · 결재처리 2/5 단계: 입력 '처리완료'`), 실행 시간, 마지막 화면 확인 시각 · **오늘 처리/오류/확인 건수**와 규칙별 건수, 지난 2주 기록 · **실시간 화면**(3초마다) · **진행 기록**(시작·규칙 실행·완료·읽은 값·오류·일시정지) · **최근 오류**와 그때 화면 · 저장된 화면 모음 · ▶ 시작 / 시험 / ■ 중지 |
+| **▣ 화면** | 서버 브라우저 화면. **선택**: 누르면 좌표·색, 드래그하면 영역 → "+ 색 조건 / + 좌표 클릭 / + 글자(OCR) 조건 / + 글자 읽기 단계" · **조작**: 누르면 서버 브라우저에서 실제 클릭 → 여기서 사이트에 로그인하고 "로그인 상태 저장" · **지금 화면 판정**: 어떤 규칙이 맞는지 미리 확인 |
+| **⚙ 설정** | 사이트 주소·화면 크기·확인 주기, 규칙·액션패턴 편집(저장 시 검사), 로그 |
 
-- 실행 중에도 화면 보기·로그는 되고, 화면 조작은 중지 후에만 됩니다(매크로와 충돌 방지).
-- 매크로가 실행 중일 때 서버가 재부팅되면 다시 켜질 때 **자동으로 이어서 시작**합니다. 직접 중지했거나 업무 종료로 끝났다면 자동 시작하지 않습니다.
-- 외부 접속(`--host 0.0.0.0`)은 `WEBMACRO_PANEL_PASSWORD` 비밀번호를 정해야만 켜집니다. 접속 방법은 아래 5장을 참고하세요.
+- 비밀번호(`WEBMACRO_PANEL_PASSWORD`)를 정하면 로그인 화면이 나오고, 한 번 로그인하면 그 기기에서 **30일 유지**됩니다. 5분 안에 5번 틀리면 잠시 막힙니다.
+- 오늘 처리 건수는 서버가 재시작돼도 유지되고, 실행 중이던 매크로는 재부팅 후 자동으로 이어서 시작합니다.
+- 실행 중에도 현황·화면 보기는 되고, 화면 조작은 중지 후에만 됩니다(매크로와 충돌 방지).
 
 ## 1. 설정 파일 (YAML)
 
@@ -159,25 +154,30 @@ python -m webmacro run 설정.yaml --dry-run --once   # 클릭 없이 판단만 
 `.env` 에 텔레그램 봇(`WEBMACRO_TELEGRAM_TOKEN`, `WEBMACRO_TELEGRAM_CHAT`) 또는
 디스코드/슬랙 웹훅(`WEBMACRO_NOTIFY_URL`)을 넣으면 시작·종료·오류·일시정지를 받습니다.
 
-## 5. 클라우드에서 24시간 실행 (Docker)
+## 5. 클라우드에서 24시간 실행 + 휴대폰 접속
 
-리눅스 서버 아무거나(오라클 클라우드 무료 VM, AWS Lightsail, 국내 VPS 등) + Docker:
+리눅스 서버(오라클 클라우드 무료 VM, AWS Lightsail, 국내 VPS 등 우분투)에서 **명령 두 줄**이면 됩니다:
 
 ```bash
-git clone https://github.com/UNDECT/codemaker.git && cd codemaker
-cp .env.example .env               # WEBMACRO_PANEL_PASSWORD(필수)·알림 설정
-docker compose up -d --build       # 관리 화면 + 매크로 실행 (재부팅·오류 시 자동 재시작)
-docker compose logs -f             # 로그 보기
+git clone -b ccr-287c0b4e-v2ibub https://github.com/UNDECT/codemaker.git && cd codemaker
+sudo bash scripts/setup-server.sh
 ```
 
-그다음 관리 화면에 접속해서 사이트 주소와 규칙을 설정하고 ▶ 시작을 누르면 됩니다.
-설정은 서버의 `data/config.yaml` 에 저장됩니다.
+스크립트가 하는 일: Docker 설치 → 관리 화면 비밀번호 생성 → 서버 공인 IP로 무료 주소(`152-70-1-23.sslip.io` 형식) 생성 →
+방화벽 80/443 열기 → 실행 + **HTTPS 인증서 자동 발급**(Caddy, Let's Encrypt). 끝나면 이렇게 알려줍니다:
 
-**관리 화면 접속 방법:** 기본값은 서버 안에서만 열리게 해 두었습니다(`127.0.0.1:8080`). 비밀번호가 평문 HTTP로 오가지 않게 하기 위해서입니다. 접속 방법은 셋 중 하나를 고르세요.
+```
+ 휴대폰에서 열기:  https://152-70-1-23.sslip.io
+ 비밀번호:         Xk3...
+```
 
-1. **SSH 터널 (PC):** `ssh -L 8080:localhost:8080 사용자@서버주소` 로 접속한 뒤 내 PC에서 http://localhost:8080 을 엽니다.
-2. **Tailscale (휴대폰 추천):** 서버와 휴대폰에 Tailscale을 설치합니다. `docker-compose.yml` 의 포트를 `"8080:8080"` 으로 바꾸고, 서버 방화벽에서 8080을 Tailscale 쪽에만 엽니다. 그러면 휴대폰에서 `http://서버의-tailscale-IP:8080` 으로 접속할 수 있습니다.
-3. **도메인 + HTTPS:** Caddy 같은 리버스 프록시를 앞에 두고 HTTPS로 엽니다.
+- 내 도메인이 있으면 `sudo bash scripts/setup-server.sh macro.내도메인.com` (도메인의 A 레코드를 서버 IP로)
+- **오라클 클라우드**는 콘솔에서도 열어야 합니다: 네트워킹 → VCN → 보안 목록 → 수신 규칙에 TCP 80, 443 추가
+- 설정·기록은 서버의 `data/` 폴더에 저장됩니다. 업데이트: `git pull && docker compose --profile https up -d --build`
+- 로그: `docker compose logs -f` / 중지: `docker compose --profile https down`
+
+직접 설정하려면 `.env.example` 을 `.env` 로 복사해 채우고 `docker compose --profile https up -d --build`.
+HTTPS 없이 서버 안에서만 쓰려면 `docker compose up -d` (관리 화면은 서버의 127.0.0.1:8080, SSH 터널로 접속).
 
 ## 6. 로컬에서 실행
 
@@ -207,5 +207,8 @@ python -m pytest -q                                      # 테스트
 | `webmacro/engine.py` | 판단·실행 루프와 안전장치 |
 | `webmacro/driver.py` | Playwright 브라우저 조작 |
 | `webmacro/notify.py` | 텔레그램/웹훅 알림 |
-| `webmacro/web.py` `panel.html` | 웹 관리 화면 (사이트 설정·서버 화면·원격 로그인·규칙 편집·시작/중지) |
+| `webmacro/web.py` `panel.html` `login.html` | 웹 관리 화면 (현황·서버 화면·원격 로그인·규칙 편집·시작/중지) |
+| `webmacro/monitor.py` | 진행 상황·오늘 건수·기록 |
+| `webmacro/auth.py` | 관리 화면 로그인(쿠키 30일, 무차별 대입 차단) |
+| `scripts/setup-server.sh` `deploy/Caddyfile` | 서버 한 번에 설정, 휴대폰용 HTTPS |
 | `webmacro/cli.py` | 명령줄 (`panel` `check` `snapshot` `color` `login` `run`) |

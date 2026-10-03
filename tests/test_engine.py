@@ -250,3 +250,28 @@ def test_recheck_after_stop_keeps_running():
     drv.texts.add("done")
     assert eng.run(max_ticks=3) == "max_ticks"
     assert len(drv.clicks()) == 3 and drv.reloads == 3 and clk.t >= 1800
+
+
+def test_progress_events(monkeypatch):
+    monkeypatch.setenv("PW", "secret")
+    seen = []
+    data = {"patterns": {"p": [{"do": "click_match"}, {"do": "wait", "sec": 0.5},
+                               {"do": "type", "text": "{env:PW}"}, {"do": "press", "key": "Enter"}]},
+            "rules": [{"name": "빨강", "when": [{"color": "#FF0000"}], "then": "p", "after": "stop"}]}
+    eng, drv, _, _ = engine(data)
+    eng.on_event = lambda kind, **i: seen.append((kind, i))
+    eng.tick()
+    drv.img[0:20, 0:20] = (255, 0, 0)
+    eng.tick()
+    kinds = [k for k, _ in seen]
+    assert kinds == ["idle", "rule", "step", "step", "step", "step", "done", "stop"]
+    details = [i["detail"] for k, i in seen if k == "step"]
+    assert details == ["(10, 10)", "0.5초", "(비공개 값)", "Enter"]
+    assert "secret" not in repr(seen)
+
+
+def test_broken_event_callback_does_not_stop_macro():
+    eng, drv, _, _ = engine(RED_THEN_DONE)
+    eng.on_event = lambda kind, **i: 1 / 0
+    drv.texts.add("없습니다")
+    assert eng.tick() == "stop"

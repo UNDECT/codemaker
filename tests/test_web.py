@@ -166,3 +166,88 @@ def test_ocr_endpoint(panel):
     assert code == 200, r
     t = req(base, "/api/test", {})[1]
     assert t["rule"] == "주문" and t["vars"] == {"주문번호": "4829"}
+
+
+def raw(base, path, body=None, headers=None, method=None):
+    data = None if body is None else json.dumps(body).encode()
+    r = urllib.request.Request(base + path, data=data, headers={"Content-Type": "application/json", **(headers or {})},
+                               method=method)
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        resp = opener.open(r, timeout=60)
+    except urllib.error.HTTPError as e:
+        resp = e
+    return resp.status if hasattr(resp, "status") else resp.code, resp.headers, resp.read()
+
+
+def test_cookie_login_flow(panel):
+    base, _, tmp = panel
+    code, h, _ = raw(base, "/")
+    assert code == 302 and h["Location"] == "/login"
+    assert raw(base, "/login")[0] == 200
+    assert raw(base, "/manifest.webmanifest")[0] == 200            # 로그인 없이 열림(홈 화면 추가용)
+    code, h, body = raw(base, "/icon-192.png")
+    assert code == 200 and body[:4] == b"\x89PNG"
+    code, _, body = raw(base, "/api/state")
+    assert code == 401 and json.loads(body)["login"] is True
+    assert raw(base, "/api/login", {"password": "bad"})[0] == 401
+    code, h, _ = raw(base, "/api/login", {"password": "pw"})
+    assert code == 200
+    cookie = h["Set-Cookie"]
+    assert "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Secure" not in cookie
+    token = cookie.split(";")[0]
+    code, _, body = raw(base, "/api/state", headers={"Cookie": token})
+    assert code == 200 and "monitor" in json.loads(body)
+    assert raw(base, "/", headers={"Cookie": token})[0] == 200
+    raw(base, "/api/logout", {}, headers={"Cookie": token})
+    assert raw(base, "/api/state", headers={"Cookie": token})[0] == 401
+
+
+def test_secure_cookie_behind_https_proxy(tmp_path):
+    from webmacro.auth import Auth
+    ctl = Controller(tmp_path / "c.yaml", MemoryNotifier())
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ctl, LogBuffer(), "pw", trust_proxy=True))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        code, h, _ = raw(base, "/api/login", {"password": "pw"}, headers={"X-Forwarded-Proto": "https"})
+        assert code == 200 and "Secure" in h["Set-Cookie"]
+        # 프록시 뒤에서는 실제 접속자 IP 기준으로 막는다
+        for _ in range(5):
+            raw(base, "/api/login", {"password": "x"}, headers={"X-Forwarded-For": "6.6.6.6"})
+        assert raw(base, "/api/login", {"password": "pw"}, headers={"X-Forwarded-For": "6.6.6.6"})[0] == 429
+        assert raw(base, "/api/login", {"password": "pw"}, headers={"X-Forwarded-For": "7.7.7.7"})[0] == 200
+    finally:
+        httpd.shutdown()
+        ctl.shutdown()
+
+
+def test_progress_visible_while_running(panel):
+    base, ctl, tmp = panel
+    (tmp / "site.html").write_text(SITE, encoding="utf-8")
+    req(base, "/api/settings", {"url": (tmp / "site.html").as_uri(), "width": 800, "height": 600, "interval": 0.2})
+    text = req(base, "/api/config")[1]["yaml"].replace(
+        "rules:\n", "rules:\n  - name: 끝\n    when: {text: 처리할 항목이 없습니다}\n"
+                    "    then: [{do: screenshot, name: done}]\n    after: stop\n", 1)
+    assert req(base, "/api/config", {"yaml": text})[0] == 200
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료")
+    m = req(base, "/api/state")[1]["monitor"]
+    assert m["today"]["done"] == 2 and m["today"]["rules"] == {"빨간색 클릭": 1, "끝": 1}
+    kinds = [e["kind"] for e in m["events"]]
+    assert kinds[0] == "start" and "done" in kinds and kinds[-2:] == ["stop", "end"]
+    assert m["activity"].startswith("멈춤")
+    # 저장된 화면 목록과 파일
+    shots = req(base, "/api/shots")[1]["shots"]
+    assert shots and shots[0]["name"].endswith("done.png")
+    code, png = req(base, "/shots/" + shots[0]["name"])
+    assert code == 200 and png[:4] == b"\x89PNG"
+    assert req(base, "/shots/..%2Fconfig.yaml")[0] == 404
+    assert req(base, "/shots/../config.yaml")[0] in (404, 400)
+    # 최근 사건만 받기
+    last = m["events"][-1]["id"]
+    assert req(base, f"/api/state?since={last}")[1]["monitor"]["events"] == []

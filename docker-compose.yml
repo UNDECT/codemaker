@@ -3,8 +3,28 @@ services:
     build: .
     restart: unless-stopped        # 서버 재부팅·오류 시 자동 재시작 (실행 중이던 매크로도 이어서 시작)
     env_file: .env                 # 관리 화면 비밀번호, SITE_ID/SITE_PW, 알림 설정
+    environment:
+      WEBMACRO_TRUST_PROXY: "1"    # 아래 caddy가 넘겨주는 접속자 IP·https 여부를 믿음
     volumes:
       - ./data:/data               # data/config.yaml, data/state/, data/output/
     ports:
-      - "127.0.0.1:8080:8080"      # 관리 화면. 접속 방법은 README '관리 화면' 참고
+      - "127.0.0.1:8080:8080"      # 서버 안에서만 열림. 휴대폰은 아래 caddy(HTTPS)로 접속
     shm_size: "1gb"                # 크롬 안정성
+
+  # 휴대폰 접속용 HTTPS (docker compose --profile https up -d)
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    env_file: .env                 # WEBMACRO_DOMAIN
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - webmacro
+
+volumes:
+  caddy_data:

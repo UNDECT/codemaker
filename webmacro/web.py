@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import base64
-import hmac
+import io
 import json
 import logging
 import os
@@ -21,12 +21,14 @@ from collections import deque
 from concurrent.futures import Future
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import yaml
 
 from . import config as config_mod
 from . import ocr
+from .auth import COOKIE, MAX_AGE, Auth
+from .monitor import Monitor
 from .driver import PlaywrightDriver
 from .engine import Engine
 from .notify import Notifier
@@ -34,6 +36,8 @@ from .notify import Notifier
 log = logging.getLogger("webmacro")
 
 PANEL_HTML = Path(__file__).with_name("panel.html")
+LOGIN_HTML = Path(__file__).with_name("login.html")
+SHOT_RE = re.compile(r"^[\w.\-]+\.png$")
 
 NEW_CONFIG = """\
 # 웹 관리 화면에서 만든 설정
@@ -108,6 +112,8 @@ class Controller:
         self.last_result = ""
         self._stop = threading.Event()
         self.state_file = self.config_path.parent / "state" / "panel.json"
+        self.out_dir = self.config_path.parent / "output"
+        self.monitor = Monitor(self.config_path.parent / "state" / "stats.json")
         if not self.config_path.exists():
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             self.config_path.write_text(NEW_CONFIG, encoding="utf-8")
@@ -298,6 +304,7 @@ class Controller:
                     attempt += 1
                     msg = str(e).splitlines()[0]
                     log.error("사이트 접속 실패(%d회): %s", attempt, msg)
+                    self.monitor.note("error", f"사이트 접속 실패({attempt}회): {msg}")
                     if attempt == 1 or attempt % 10 == 0:
                         self.notifier.send(f"사이트 접속 실패({attempt}회): {msg}")
                     self.status = f"접속 재시도 중({attempt}회)"
@@ -309,8 +316,9 @@ class Controller:
                 d.close()
                 d.start()
 
-            eng = Engine(cfg, d, self.notifier, dry_run=dry_run,
-                         out_dir=cfg.base_dir / "output", sleep=self._sleep)
+            eng = Engine(cfg, d, self.notifier, dry_run=dry_run, out_dir=self.out_dir,
+                         sleep=self._sleep, on_event=self.monitor.on_event)
+            self.monitor.started(cfg.url, dry_run)
             log.info("시작: %s (규칙 %d개%s)", cfg.url, len(cfg.rules), ", dry-run" if dry_run else "")
             if not dry_run:
                 self.notifier.send(f"매크로 시작: {cfg.url}")
@@ -328,6 +336,7 @@ class Controller:
         finally:
             if eng:
                 eng._save_session()
+            self.monitor.finished(self.last_result or "멈춤")
             self.running = False
             self.status = "대기"
             self._stop.clear()
@@ -339,6 +348,13 @@ class Controller:
         except OSError as e:
             log.error("상태 저장 실패: %s", e)
 
+    def list_shots(self, n: int = 40) -> list[dict]:
+        try:
+            files = sorted(self.out_dir.glob("*.png"), key=lambda f: f.stat().st_mtime, reverse=True)[:n]
+        except OSError:
+            return []
+        return [{"name": f.name, "t": f.stat().st_mtime} for f in files]
+
     def should_autostart(self) -> bool:
         try:
             return bool(json.loads(self.state_file.read_text(encoding="utf-8")).get("autostart"))
@@ -347,36 +363,82 @@ class Controller:
 
 
 # ---------- HTTP ----------
-def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None):
+def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth: Auth | None = None,
+                 trust_proxy: bool | None = None):
+    auth = auth or Auth(password, ctl.config_path.parent / "state" / "auth.json")
+    if trust_proxy is None:
+        trust_proxy = os.environ.get("WEBMACRO_TRUST_PROXY") == "1"
+    public = {"/login", "/api/login", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"}
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "webmacro"
 
         def log_message(self, fmt, *args):  # 접속 로그는 생략
             pass
 
-        def _auth_ok(self) -> bool:
-            if not password:
-                return True
-            h = self.headers.get("Authorization", "")
-            if not h.startswith("Basic "):
-                return False
-            try:
-                user_pw = base64.b64decode(h[6:]).decode("utf-8")
-            except Exception:
-                return False
-            pw = user_pw.split(":", 1)[1] if ":" in user_pw else ""
-            return hmac.compare_digest(pw.encode(), password.encode())
+        # --- 인증 ---
+        def _client(self) -> str:
+            if trust_proxy and self.headers.get("X-Forwarded-For"):
+                return self.headers["X-Forwarded-For"].split(",")[0].strip()
+            return self.client_address[0]
 
-        def _send(self, code: int, body: bytes, ctype: str):
+        def _https(self) -> bool:
+            return trust_proxy and self.headers.get("X-Forwarded-Proto") == "https"
+
+        def _cookie_token(self) -> str | None:
+            for part in (self.headers.get("Cookie") or "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == COOKIE:
+                    return v
+            return None
+
+        def _auth_ok(self) -> bool:
+            if not auth.enabled:
+                return True
+            if auth.valid(self._cookie_token()):
+                return True
+            h = self.headers.get("Authorization", "")  # 스크립트·curl용
+            if h.startswith("Basic "):
+                try:
+                    pw = base64.b64decode(h[6:]).decode("utf-8").split(":", 1)[-1]
+                except Exception:
+                    return False
+                if auth.blocked(self._client()):
+                    return False
+                if auth.check_password(pw):
+                    return True
+                auth.record_fail(self._client())
+            return False
+
+        def _guard(self, path: str) -> bool:
+            if path in public or self._auth_ok():
+                return True
+            if path.startswith("/api/") or path.startswith("/shots/"):
+                self._json({"error": "로그인이 필요합니다", "login": True}, 401)
+            else:
+                self.send_response(302)
+                self.send_header("Location", "/login")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            return False
+
+        # --- 응답 ---
+        def _send(self, code: int, body: bytes, ctype: str, headers: dict | None = None, cache: str = "no-store"):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
 
-        def _json(self, obj, code=200):
-            self._send(code, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        def _json(self, obj, code=200, headers=None):
+            self._send(code, json.dumps(obj, ensure_ascii=False).encode(), "application/json; charset=utf-8",
+                       headers)
 
         def _body(self) -> dict:
             n = int(self.headers.get("Content-Length") or 0)
@@ -384,25 +446,33 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None):
                 raise ValueError("요청이 너무 큽니다")
             return json.loads(self.rfile.read(n) or b"{}")
 
-        def _guard(self) -> bool:
-            if self._auth_ok():
-                return True
-            self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="webmacro", charset="UTF-8"')
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return False
+        def _cookie(self, value: str, max_age: int) -> dict:
+            c = f"{COOKIE}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict"
+            if self._https():
+                c += "; Secure"
+            return {"Set-Cookie": c}
 
+        # --- GET ---
         def do_GET(self):
-            if not self._guard():
+            u = urlparse(self.path)
+            path = u.path
+            if not self._guard(path):
                 return
-            path = urlparse(self.path).path
             try:
                 if path == "/":
                     self._send(200, PANEL_HTML.read_bytes(), "text/html; charset=utf-8")
+                elif path == "/login":
+                    self._send(200, LOGIN_HTML.read_bytes(), "text/html; charset=utf-8")
+                elif path == "/manifest.webmanifest":
+                    self._send(200, json.dumps(MANIFEST, ensure_ascii=False).encode(),
+                               "application/manifest+json", cache="max-age=86400")
+                elif path in ("/icon-192.png", "/icon-512.png"):
+                    self._send(200, _icon(192 if "192" in path else 512), "image/png", cache="max-age=86400")
                 elif path == "/api/state":
+                    since = int((parse_qs(u.query).get("since") or ["0"])[0] or 0)
                     self._json({"running": ctl.running, "status": ctl.status, "last_result": ctl.last_result,
-                                "dry_run": ctl.dry_run, "log": list(logbuf.lines)[-120:]})
+                                "dry_run": ctl.dry_run, "log": list(logbuf.lines)[-120:],
+                                "monitor": ctl.monitor.snapshot(since), "auth": auth.enabled})
                 elif path == "/api/config":
                     text = ctl.read_text()
                     try:
@@ -414,19 +484,43 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None):
                     self._json({"yaml": text, "settings": info, "path": str(ctl.config_path)})
                 elif path == "/api/screenshot":
                     self._send(200, ctl.screenshot_png(), "image/png")
+                elif path == "/api/shots":
+                    self._json({"shots": ctl.list_shots()})
+                elif path.startswith("/shots/"):
+                    name = path[len("/shots/"):]
+                    f = ctl.out_dir / name
+                    if not SHOT_RE.match(name) or not f.is_file():
+                        self._json({"error": "없는 파일"}, 404)
+                    else:
+                        self._send(200, f.read_bytes(), "image/png", cache="private, max-age=3600")
                 else:
                     self._json({"error": "없는 주소"}, 404)
             except Exception as e:
                 log.error("요청 실패 %s: %s", path, e)
                 self._json({"error": _short(e)}, 500)
 
+        # --- POST ---
         def do_POST(self):
-            if not self._guard():
-                return
             path = urlparse(self.path).path
+            if not self._guard(path):
+                return
             try:
                 body = self._body()
-                if path == "/api/config":
+                if path == "/api/login":
+                    who = self._client()
+                    if auth.blocked(who):
+                        self._json({"error": "너무 많이 틀렸습니다. 5분 뒤 다시 시도하세요."}, 429)
+                        return
+                    token = auth.login(who, str(body.get("password", "")))
+                    if not token:
+                        self._json({"error": "비밀번호가 틀렸습니다"}, 401)
+                        return
+                    log.info("관리 화면 로그인 (%s)", who)
+                    self._json({"ok": True}, headers=self._cookie(token, MAX_AGE))
+                elif path == "/api/logout":
+                    auth.logout(self._cookie_token())
+                    self._json({"ok": True}, headers=self._cookie("", 0))
+                elif path == "/api/config":
                     cfg = ctl.save_text(body["yaml"])
                     self._json({"ok": True, "message": _summary(cfg) + _restart_note(ctl)})
                 elif path == "/api/settings":
@@ -472,6 +566,29 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None):
                 self._json({"error": _short(e)}, 500)
 
     return Handler
+
+
+MANIFEST = {
+    "name": "webmacro 업무 매크로", "short_name": "매크로", "start_url": "/", "display": "standalone",
+    "background_color": "#111418", "theme_color": "#2563eb", "lang": "ko",
+    "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+              {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}],
+}
+_ICONS: dict[int, bytes] = {}
+
+
+def _icon(size: int) -> bytes:
+    """홈 화면 아이콘: 파란 바탕에 흰 재생(▶) 모양."""
+    if size not in _ICONS:
+        from PIL import Image, ImageDraw
+        im = Image.new("RGB", (size, size), (37, 99, 235))
+        d = ImageDraw.Draw(im)
+        c, r = size / 2, size * 0.24
+        d.polygon([(c - r * 0.7, c - r), (c - r * 0.7, c + r), (c + r, c)], fill=(255, 255, 255))
+        buf = io.BytesIO()
+        im.save(buf, "PNG")
+        _ICONS[size] = buf.getvalue()
+    return _ICONS[size]
 
 
 def _short(e: Exception) -> str:
