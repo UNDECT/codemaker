@@ -18,4 +18,5 @@ ENV PYTHONPATH=/app
 # 설정·세션·로그는 /data 에 둔다 (docker-compose에서 폴더 연결)
 WORKDIR /data
 ENTRYPOINT ["python", "-m", "webmacro"]
-CMD ["run", "/data/config.yaml"]
+EXPOSE 8080
+CMD ["panel", "/data/config.yaml", "--host", "0.0.0.0", "--port", "8080"]

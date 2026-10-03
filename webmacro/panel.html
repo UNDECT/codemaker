@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>webmacro 관리</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--fg:#1d2330;--mute:#6b7280;--line:#e2e5ea;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#d97706}
+@media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1f26;--fg:#e6e9ee;--mute:#9aa3af;--line:#2b323c;--acc:#60a5fa;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header h1{font-size:16px;margin:0 8px 0 0}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mute);display:inline-block;margin-right:6px}
+.dot.on{background:var(--ok)}
+main{max-width:1200px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h2{font-size:15px;margin:0 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+label{color:var(--mute);font-size:13px}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+input[type=url]{flex:1 1 320px;min-width:0}
+input.num{width:80px}
+button{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:6px;padding:6px 12px;cursor:pointer}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.go{background:var(--ok);border-color:var(--ok);color:#fff}
+button.stop{background:var(--bad);border-color:var(--bad);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+.msg{font-size:13px;min-height:1.5em;margin-top:6px}
+.msg.err{color:var(--bad)}.msg.ok{color:var(--ok)}
+#shotWrap{position:relative;margin-top:10px;border:1px solid var(--line);border-radius:6px;overflow:auto;max-height:70vh;background:#000}
+#shot:not([src]){display:none}
+#shotWrap:has(#shot:not([src]))::before{content:"'화면 새로고침'을 누르면 서버 브라우저 화면이 여기에 나옵니다";display:block;padding:24px;color:#9aa3af;text-align:center}
+#shot{display:block;width:100%;height:auto;cursor:crosshair;user-select:none;-webkit-user-drag:none}
+#sel{position:absolute;border:2px dashed #ff0;background:rgba(255,255,0,.12);pointer-events:none;display:none}
+#mark{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid #fff;outline:2px solid #000;border-radius:50%;pointer-events:none;display:none}
+.pick{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.sw{width:22px;height:22px;border-radius:4px;border:1px solid var(--line)}
+code{background:var(--bg);padding:1px 5px;border-radius:4px}
+textarea#yaml{width:100%;min-height:380px;font:13px/1.45 ui-monospace,Consolas,"D2Coding",monospace;white-space:pre;tab-size:2}
+pre#log{margin:0;max-height:260px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+.seg button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
+.hint{color:var(--mute);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>webmacro</h1>
+  <span><span id="dot" class="dot"></span><b id="status">-</b> <span id="result" class="hint"></span></span>
+  <span style="flex:1"></span>
+  <button class="go" id="btnStart">▶ 시작</button>
+  <button id="btnDry" title="클릭하지 않고 판단만 기록">시험 실행</button>
+  <button class="stop" id="btnStop">■ 중지</button>
+</header>
+<main>
+  <section class="card">
+    <h2>1. 사이트 설정</h2>
+    <div class="row">
+      <input type="url" id="url" placeholder="https://업무사이트주소">
+      <label>화면</label><input class="num" id="w" type="number" min="320"> × <input class="num" id="h" type="number" min="240">
+      <label>확인 주기(초)</label><input class="num" id="interval" type="number" step="0.5" min="0.2">
+      <button class="pri" id="btnSaveSite">저장하고 열기</button>
+    </div>
+    <div id="siteMsg" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. 서버 화면</h2>
+    <div class="row">
+      <button id="btnShot">화면 새로고침</button>
+      <label><input type="checkbox" id="auto"> 자동(2초)</label>
+      <span class="seg row"><button id="mPick" class="active">선택 모드</button><button id="mCtl">조작 모드</button></span>
+      <button id="btnTest">지금 화면 판정</button>
+      <span id="curUrl" class="hint"></span>
+    </div>
+    <div class="row" id="ctlRow" style="margin-top:8px;display:none">
+      <input id="typeText" placeholder="입력할 글자 (아이디 등)" style="flex:1 1 200px">
+      <button id="btnType">입력</button>
+      <button data-key="Enter">Enter</button><button data-key="Tab">Tab</button><button data-key="Backspace">⌫</button>
+      <button id="btnUp">▲ 스크롤</button><button id="btnDown">▼ 스크롤</button>
+      <button id="btnHome">처음 주소</button><button id="btnReload">새로고침</button>
+      <button class="pri" id="btnSession" title="로그인 상태를 저장해 다음 실행에도 유지">로그인 상태 저장</button>
+    </div>
+    <div class="hint" id="modeHint">선택 모드: 클릭하면 좌표·색상을 고르고, 드래그하면 영역을 고릅니다. 아래 버튼으로 설정에 바로 넣을 수 있습니다.</div>
+    <div class="pick">
+      <span class="sw" id="sw"></span>
+      <span>좌표 <code id="pxy">-</code> 색상 <code id="pcol">-</code> 영역 <code id="preg">-</code></span>
+      <button id="insColor" disabled>+ 색 조건</button>
+      <button id="insClick" disabled>+ 좌표 클릭 단계</button>
+      <button id="insRegion" disabled>+ 영역</button>
+    </div>
+    <div id="shotMsg" class="msg"></div>
+    <div id="shotWrap"><img id="shot" alt="서버 화면 (화면 새로고침을 누르세요)"><div id="sel"></div><div id="mark"></div></div>
+    <canvas id="cv" hidden></canvas>
+  </section>
+
+  <section class="card">
+    <h2>3. 규칙·액션패턴</h2>
+    <div class="hint">커서가 있는 줄 아래에 위 버튼들이 넣어 줍니다. 형식은 README 참고. 저장 시 자동 검사합니다.</div>
+    <textarea id="yaml" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="pri" id="btnSaveYaml">검사하고 저장</button>
+      <button id="btnRevert">되돌리기</button>
+      <span id="cfgPath" class="hint"></span>
+    </div>
+    <div id="yamlMsg" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <h2>로그</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let mode = 'pick', pick = null, region = null, running = false, autoTimer = null;
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
+  const r = await fetch(path, opt);
+  const ct = r.headers.get('Content-Type') || '';
+  const data = ct.includes('json') ? await r.json() : await r.blob();
+  if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+  return data;
+}
+function msg(el, text, ok) { el.textContent = text || ''; el.className = 'msg ' + (ok === false ? 'err' : ok ? 'ok' : ''); }
+
+// ---- 상태 ----
+async function refreshState() {
+  try {
+    const s = await api('/api/state');
+    running = s.running;
+    $('status').textContent = s.status;
+    $('dot').className = 'dot' + (s.running ? ' on' : '');
+    $('result').textContent = s.last_result ? '· 마지막: ' + s.last_result : '';
+    $('btnStart').disabled = $('btnDry').disabled = s.running;
+    $('btnStop').disabled = !s.running;
+    const lg = $('log'), atBottom = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 10;
+    lg.textContent = s.log.join('\n');
+    if (atBottom) lg.scrollTop = lg.scrollHeight;
+  } catch (e) { $('status').textContent = '연결 끊김'; }
+}
+setInterval(refreshState, 2000); refreshState();
+
+// ---- 설정 ----
+async function loadConfig() {
+  const c = await api('/api/config');
+  $('yaml').value = c.yaml; $('cfgPath').textContent = c.path;
+  const s = c.settings || {};
+  if (s.error) msg($('yamlMsg'), '현재 설정 오류: ' + s.error, false);
+  $('url').value = s.url || ''; $('w').value = s.width || 1920; $('h').value = s.height || 1080; $('interval').value = s.interval || 2;
+}
+$('btnSaveSite').onclick = async () => {
+  try {
+    const r = await api('/api/settings', {url:$('url').value.trim(), width:+$('w').value, height:+$('h').value, interval:+$('interval').value});
+    $('yaml').value = r.yaml; msg($('siteMsg'), r.message, true); shot();
+  } catch (e) { msg($('siteMsg'), e.message, false); }
+};
+$('btnSaveYaml').onclick = async () => {
+  try { const r = await api('/api/config', {yaml:$('yaml').value}); msg($('yamlMsg'), r.message, true); loadConfig(); }
+  catch (e) { msg($('yamlMsg'), e.message, false); }
+};
+$('btnRevert').onclick = () => loadConfig().then(() => msg($('yamlMsg'), '저장된 내용으로 되돌림', true));
+
+// ---- 시작/중지 ----
+async function start(dry) {
+  try { await api('/api/start', {dry_run:dry}); refreshState(); if (!$('auto').checked) { $('auto').checked = true; setAuto(); } }
+  catch (e) { alert(e.message); }
+}
+$('btnStart').onclick = () => { if (confirm('매크로를 시작할까요? 실제로 클릭합니다.')) start(false); };
+$('btnDry').onclick = () => start(true);
+$('btnStop').onclick = async () => { await api('/api/stop', {}); refreshState(); };
+
+// ---- 화면 ----
+async function shot() {
+  try {
+    msg($('shotMsg'), '불러오는 중…');
+    const b = await api('/api/screenshot');
+    const url = URL.createObjectURL(b), img = $('shot'), old = img.src;
+    img.onload = () => { if (old.startsWith('blob:')) URL.revokeObjectURL(old); drawMarks(); };
+    img.src = url; msg($('shotMsg'), '');
+  } catch (e) { msg($('shotMsg'), '화면을 가져오지 못했습니다: ' + e.message, false); }
+}
+function setAuto() { clearInterval(autoTimer); if ($('auto').checked) autoTimer = setInterval(shot, 2000); }
+$('auto').onchange = setAuto;
+$('btnShot').onclick = shot;
+
+function toImg(ev) {
+  const img = $('shot'), r = img.getBoundingClientRect();
+  const sx = img.naturalWidth / r.width, sy = img.naturalHeight / r.height;
+  return {x: Math.round((ev.clientX - r.left) * sx), y: Math.round((ev.clientY - r.top) * sy)};
+}
+function colorAt(x, y) {
+  const img = $('shot'), cv = $('cv');
+  if (cv.width !== img.naturalWidth || cv._src !== img.src) {
+    cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0); cv._src = img.src;
+  }
+  const d = cv.getContext('2d', {willReadFrequently:true}).getImageData(x, y, 1, 1).data;
+  return '#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+function drawMarks() {
+  const img = $('shot'); if (!img.naturalWidth) return;
+  const k = img.getBoundingClientRect().width / img.naturalWidth;
+  const m = $('mark'), s = $('sel');
+  if (pick) { m.style.display = 'block'; m.style.left = pick.x * k + 'px'; m.style.top = pick.y * k + 'px'; } else m.style.display = 'none';
+  if (region) { s.style.display = 'block'; s.style.left = region[0]*k+'px'; s.style.top = region[1]*k+'px'; s.style.width = (region[2]-region[0])*k+'px'; s.style.height = (region[3]-region[1])*k+'px'; } else s.style.display = 'none';
+}
+window.addEventListener('resize', drawMarks);
+
+let down = null;
+$('shot').addEventListener('pointerdown', ev => { if (!$('shot').naturalWidth) return; ev.preventDefault(); down = toImg(ev); });
+$('shot').addEventListener('pointerup', async ev => {
+  if (!down) return;
+  const up = toImg(ev), d0 = down; down = null;
+  if (mode === 'ctl') {
+    try { const r = await api('/api/browser', {action:'click', x:up.x, y:up.y}); $('curUrl').textContent = r.url; setTimeout(shot, 300); }
+    catch (e) { msg($('shotMsg'), e.message, false); }
+    return;
+  }
+  if (Math.abs(up.x - d0.x) > 6 || Math.abs(up.y - d0.y) > 6) {
+    region = [Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)];
+    $('preg').textContent = '[' + region.join(', ') + ']'; $('insRegion').disabled = false;
+  } else {
+    const c = colorAt(up.x, up.y);
+    pick = {x: up.x, y: up.y, color: c};
+    $('pxy').textContent = up.x + ', ' + up.y; $('pcol').textContent = c; $('sw').style.background = c;
+    $('insColor').disabled = $('insClick').disabled = false;
+  }
+  drawMarks();
+});
+
+function setMode(m) {
+  mode = m; $('mPick').classList.toggle('active', m === 'pick'); $('mCtl').classList.toggle('active', m === 'ctl');
+  $('ctlRow').style.display = m === 'ctl' ? 'flex' : 'none';
+  $('modeHint').textContent = m === 'ctl'
+    ? '조작 모드: 화면을 클릭하면 서버 브라우저에서 실제로 클릭됩니다. 로그인한 뒤 "로그인 상태 저장"을 누르세요. (매크로 중지 상태에서만)'
+    : '선택 모드: 클릭하면 좌표·색상을 고르고, 드래그하면 영역을 고릅니다. 아래 버튼으로 설정에 바로 넣을 수 있습니다.';
+}
+$('mPick').onclick = () => setMode('pick'); $('mCtl').onclick = () => setMode('ctl');
+
+async function act(body) {
+  try { const r = await api('/api/browser', body); $('curUrl').textContent = r.url; msg($('shotMsg'), body.action === 'save_session' ? '로그인 상태 저장됨' : '', true); setTimeout(shot, 300); }
+  catch (e) { msg($('shotMsg'), e.message, false); }
+}
+$('btnType').onclick = () => { act({action:'type', text:$('typeText').value}); $('typeText').value = ''; };
+$('typeText').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnType').click(); });
+document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => act({action:'press', key:b.dataset.key}));
+$('btnUp').onclick = () => act({action:'scroll', dy:-400});
+$('btnDown').onclick = () => act({action:'scroll', dy:400});
+$('btnHome').onclick = () => act({action:'home'});
+$('btnReload').onclick = () => act({action:'reload'});
+$('btnSession').onclick = () => act({action:'save_session'});
+
+$('btnTest').onclick = async () => {
+  try {
+    const r = await api('/api/test', {});
+    if (!r.rule) msg($('shotMsg'), '지금 화면에 맞는 규칙이 없습니다 → 아무것도 누르지 않습니다.');
+    else {
+      const pos = Object.entries(r.positions || {}).map(([k, v]) => k + ' (' + v.join(', ') + ')').join(', ');
+      msg($('shotMsg'), `맞는 규칙: "${r.rule}" → 패턴 "${r.pattern}"` + (pos ? ' · 위치 ' + pos : ''), true);
+      const first = Object.values(r.positions || {})[0];
+      if (first) {
+        pick = {x:first[0], y:first[1], color:colorAt(first[0], first[1])};
+        $('pxy').textContent = pick.x + ', ' + pick.y; $('pcol').textContent = pick.color; $('sw').style.background = pick.color;
+        $('insColor').disabled = $('insClick').disabled = false; drawMarks();
+      }
+    }
+  } catch (e) { msg($('shotMsg'), e.message, false); }
+};
+
+// ---- YAML에 끼워 넣기 ----
+function insertLine(text) {
+  const ta = $('yaml'), v = ta.value, pos = ta.selectionEnd;
+  let eol = v.indexOf('\n', pos); if (eol < 0) eol = v.length;
+  const lineStart = v.lastIndexOf('\n', pos - 1) + 1;
+  const indent = (v.slice(lineStart, eol).match(/^\s*/) || [''])[0];
+  const ins = '\n' + indent + text;
+  ta.value = v.slice(0, eol) + ins + v.slice(eol);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = eol + ins.length;
+  msg($('yamlMsg'), '넣었습니다. 위치를 확인하고 "검사하고 저장"을 누르세요.');
+}
+$('insColor').onclick = () => insertLine(`- {color: "${pick.color}", tolerance: 15${region ? ', region: [' + region.join(', ') + ']' : ''}}`);
+$('insClick').onclick = () => insertLine(`- {do: click, x: ${pick.x}, y: ${pick.y}}`);
+$('insRegion').onclick = () => insertLine(`region: [${region.join(', ')}]`);
+
+loadConfig().catch(e => msg($('yamlMsg'), e.message, false));
+</script>
+</body>
+</html>

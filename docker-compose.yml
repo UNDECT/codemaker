@@ -1,8 +1,10 @@
 services:
   webmacro:
     build: .
-    restart: unless-stopped        # 서버 재부팅·오류 시 자동 재시작
-    env_file: .env                 # SITE_ID, SITE_PW, 텔레그램 토큰 등
+    restart: unless-stopped        # 서버 재부팅·오류 시 자동 재시작 (실행 중이던 매크로도 이어서 시작)
+    env_file: .env                 # 관리 화면 비밀번호, SITE_ID/SITE_PW, 알림 설정
     volumes:
       - ./data:/data               # data/config.yaml, data/state/, data/output/
+    ports:
+      - "127.0.0.1:8080:8080"      # 관리 화면. 접속 방법은 README '관리 화면' 참고
     shm_size: "1gb"                # 크롬 안정성

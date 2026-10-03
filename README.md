@@ -9,7 +9,31 @@
                                       └ 아무것도 안 맞으면 아무것도 누르지 않음
 ```
 
+## 0. 관리 화면 (가장 쉬운 방법)
+
+```bash
+python -m webmacro panel data/config.yaml          # → http://127.0.0.1:8080 접속 (설정 파일이 없으면 새로 만듦)
+```
+
+브라우저(PC·휴대폰)에서 아래를 모두 할 수 있습니다. 설정 파일을 직접 열 필요가 없습니다.
+
+| 영역 | 하는 일 |
+|---|---|
+| **1. 사이트 설정** | 업무 사이트 주소·화면 크기·확인 주기 입력 → "저장하고 열기" |
+| **2. 서버 화면** | 서버 브라우저가 보는 화면을 그대로 표시 (자동 새로고침 가능) |
+| └ 선택 모드 | 화면 클릭 → 좌표·색상 표시, 드래그 → 영역. "+ 색 조건 / + 좌표 클릭 단계 / + 영역" 버튼으로 아래 설정에 바로 넣기 |
+| └ 조작 모드 | 화면 클릭·글자 입력·Enter가 **서버 브라우저에서 실제로** 실행됨 → 여기서 로그인하고 "로그인 상태 저장" |
+| └ 지금 화면 판정 | 현재 화면에서 어떤 규칙이 맞는지 미리 확인 (아무것도 누르지 않음) |
+| **3. 규칙·액션패턴** | 설정 편집. 저장할 때 오류를 검사해서 잘못된 설정은 저장되지 않음 |
+| **상단 버튼** | ▶ 시작 / 시험 실행(클릭 없이 판단만 기록) / ■ 중지, 상태와 로그 |
+
+- 실행 중에도 화면 보기·로그는 되고, 화면 조작은 중지 후에만 됩니다(매크로와 충돌 방지).
+- 매크로가 실행 중일 때 서버가 재부팅되면 다시 켜질 때 **자동으로 이어서 시작**합니다. 직접 중지했거나 업무 종료로 끝났다면 자동 시작하지 않습니다.
+- 외부 접속(`--host 0.0.0.0`)은 `WEBMACRO_PANEL_PASSWORD` 비밀번호를 정해야만 켜집니다. 접속 방법은 아래 5장을 참고하세요.
+
 ## 1. 설정 파일 (YAML)
+
+관리 화면의 "3. 규칙·액션패턴" 칸에 들어가는 내용입니다.
 
 `examples/example.yaml` 을 복사해서 고칩니다. 핵심은 두 부분입니다.
 
@@ -90,8 +114,9 @@ python -m webmacro run 설정.yaml --dry-run --once   # 클릭 없이 판단만 
 
 ## 3. 로그인 유지
 
-둘 중 하나:
+셋 중 하나:
 - **자동 로그인 규칙**: `url: /login` 조건 + `type`(`{env:SITE_ID}`, `{env:SITE_PW}`) 패턴 (예시 파일 참고)
+- **관리 화면에서 직접 로그인**: "조작 모드"로 서버 브라우저에서 로그인 → "로그인 상태 저장" (가장 쉬움)
 - **직접 로그인한 세션 복사**: 화면 있는 PC에서 `python -m webmacro login 설정.yaml` → 브라우저에서 로그인 →
   `state/session.json` 생성 → 서버의 `data/state/` 로 복사. 실행 중 세션은 10분마다 갱신 저장됩니다.
 
@@ -108,14 +133,19 @@ python -m webmacro run 설정.yaml --dry-run --once   # 클릭 없이 판단만 
 
 ```bash
 git clone https://github.com/UNDECT/codemaker.git && cd codemaker
-mkdir -p data && cp examples/example.yaml data/config.yaml   # 사이트에 맞게 수정
-cp .env.example .env                                         # 아이디·비번·알림 설정
-docker compose up -d --build        # 백그라운드 실행 (재부팅·오류 시 자동 재시작)
-docker compose logs -f              # 로그 보기
-docker compose run --rm webmacro snapshot /data/config.yaml -o /data/snap.png   # 서버 화면 확인
+cp .env.example .env               # WEBMACRO_PANEL_PASSWORD(필수)·알림 설정
+docker compose up -d --build       # 관리 화면 + 매크로 실행 (재부팅·오류 시 자동 재시작)
+docker compose logs -f             # 로그 보기
 ```
 
-설정을 바꾼 뒤에는 `docker compose restart`.
+그다음 관리 화면에 접속해서 사이트 주소와 규칙을 설정하고 ▶ 시작을 누르면 됩니다.
+설정은 서버의 `data/config.yaml` 에 저장됩니다.
+
+**관리 화면 접속 방법:** 기본값은 서버 안에서만 열리게 해 두었습니다(`127.0.0.1:8080`). 비밀번호가 평문 HTTP로 오가지 않게 하기 위해서입니다. 접속 방법은 셋 중 하나를 고르세요.
+
+1. **SSH 터널 (PC):** `ssh -L 8080:localhost:8080 사용자@서버주소` 로 접속한 뒤 내 PC에서 http://localhost:8080 을 엽니다.
+2. **Tailscale (휴대폰 추천):** 서버와 휴대폰에 Tailscale을 설치합니다. `docker-compose.yml` 의 포트를 `"8080:8080"` 으로 바꾸고, 서버 방화벽에서 8080을 Tailscale 쪽에만 엽니다. 그러면 휴대폰에서 `http://서버의-tailscale-IP:8080` 으로 접속할 수 있습니다.
+3. **도메인 + HTTPS:** Caddy 같은 리버스 프록시를 앞에 두고 HTTPS로 엽니다.
 
 ## 6. 로컬에서 실행
 
@@ -144,4 +174,5 @@ python -m pytest -q                                      # 테스트
 | `webmacro/engine.py` | 판단·실행 루프와 안전장치 |
 | `webmacro/driver.py` | Playwright 브라우저 조작 |
 | `webmacro/notify.py` | 텔레그램/웹훅 알림 |
-| `webmacro/cli.py` | 명령줄 (`check` `snapshot` `color` `login` `run`) |
+| `webmacro/web.py` `panel.html` | 웹 관리 화면 (사이트 설정·서버 화면·원격 로그인·규칙 편집·시작/중지) |
+| `webmacro/cli.py` | 명령줄 (`panel` `check` `snapshot` `color` `login` `run`) |

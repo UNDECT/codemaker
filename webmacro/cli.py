@@ -5,6 +5,7 @@
   python -m webmacro color    a.png X Y               이미지의 (X,Y) 색상 출력
   python -m webmacro login    설정.yaml               브라우저 창을 띄워 직접 로그인 → 세션 저장
   python -m webmacro run      설정.yaml [--dry-run] [--once]
+  python -m webmacro panel    설정.yaml [--host 0.0.0.0] [--port 8080]   웹 관리 화면
 """
 from __future__ import annotations
 
@@ -125,6 +126,13 @@ def cmd_run(a):
         d.close()
 
 
+def cmd_panel(a):
+    from .web import serve
+    out = Path(a.config).resolve().parent / "output"
+    _setup_logging(out)
+    serve(a.config, host=a.host, port=a.port, autostart=not a.no_autostart)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="webmacro", description="웹사이트 색상 인식 자동화")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -155,6 +163,13 @@ def main(argv=None):
     s.add_argument("--once", action="store_true", help="한 번만 확인")
     s.add_argument("--headed", action="store_true", help="브라우저 창 표시")
     s.set_defaults(fn=cmd_run)
+
+    s = sub.add_parser("panel", help="웹 관리 화면 (사이트 설정·화면 보기·시작/중지)")
+    s.add_argument("config", help="설정 파일 (없으면 새로 만듦)")
+    s.add_argument("--host", default="127.0.0.1", help="외부 접속 허용은 0.0.0.0 (비밀번호 필요)")
+    s.add_argument("--port", type=int, default=8080)
+    s.add_argument("--no-autostart", action="store_true", help="재시작 시 이전 실행 상태를 이어가지 않음")
+    s.set_defaults(fn=cmd_panel)
 
     a = p.parse_args(argv)
     try:
