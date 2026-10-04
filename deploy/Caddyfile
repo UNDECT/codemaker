@@ -1,5 +1,6 @@
 # 휴대폰 접속용 HTTPS. 인증서(Let's Encrypt)를 자동으로 받아 갱신한다.
 # WEBMACRO_DOMAIN 예: 152-70-1-23.sslip.io (서버 IP의 점을 -로 바꾼 무료 주소) 또는 내 도메인
+# (비어 있을 때의 대체 주소는 docker-compose.yml 에서 넣는다 — 빈 값이면 caddy가 설정을 못 읽고 재시작을 반복함)
 {$WEBMACRO_DOMAIN} {
 	encode gzip
 	reverse_proxy webmacro:8080

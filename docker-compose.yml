@@ -5,6 +5,8 @@ services:
     env_file: .env                 # 관리 화면 비밀번호, SITE_ID/SITE_PW, 알림 설정
     environment:
       WEBMACRO_TRUST_PROXY: "1"    # 아래 caddy가 넘겨주는 접속자 IP·https 여부를 믿음
+      # 비밀번호가 없으면 시작 단계에서 바로 알려준다 (조용히 실패하지 않게)
+      WEBMACRO_PANEL_PASSWORD: ${WEBMACRO_PANEL_PASSWORD:?.env 에 WEBMACRO_PANEL_PASSWORD 가 없습니다 - sudo bash scripts/setup-server.sh 를 다시 실행하세요}
     volumes:
       - ./data:/data               # data/config.yaml, data/state/, data/output/
     ports:
@@ -16,7 +18,9 @@ services:
     image: caddy:2
     profiles: ["https"]
     restart: unless-stopped
-    env_file: .env                 # WEBMACRO_DOMAIN
+    environment:
+      # .env 의 접속 주소. 비어 있으면(예전엔 caddy가 켜졌다 꺼지기를 반복) 안내용 주소로 시작해 로그에 원인이 남는다
+      WEBMACRO_DOMAIN: ${WEBMACRO_DOMAIN:-set-WEBMACRO_DOMAIN-in-dotenv.invalid}
     ports:
       - "80:80"
       - "443:443"

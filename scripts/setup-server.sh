@@ -59,14 +59,39 @@ if command -v iptables >/dev/null 2>&1; then
 fi
 
 # 5. 실행
-say "빌드·실행 (처음엔 몇 분 걸립니다)"
+say "빌드·실행 (처음엔 10분 넘게 걸릴 수 있습니다)"
 docker compose --profile https up -d --build
+
+# 6. 제대로 떴는지 확인 (켜졌다 꺼지기를 반복하거나 인증서가 안 나오면 원인을 보여준다)
+say "동작 확인 (최대 2분)"
+ok=""
+for i in $(seq 1 24); do
+  sleep 5
+  running="$(docker compose --profile https ps --status running --services 2>/dev/null)"
+  if echo "$running" | grep -qx webmacro && echo "$running" | grep -qx caddy \
+     && docker compose --profile https logs caddy 2>&1 | grep -q "certificate obtained successfully\|certificate is valid\|skipping automatic certificate management"; then
+    ok=1; break
+  fi
+  if docker compose --profile https logs caddy 2>&1 | grep -qi "rateLimited\|too many certificates"; then break; fi
+done
+if [ -z "$ok" ]; then
+  echo
+  echo "⚠️  아직 정상 확인이 안 됐습니다. 아래 내용을 캡처해서 보내주세요."
+  docker compose --profile https ps -a
+  echo "---- caddy ----"
+  docker compose --profile https logs --tail 15 caddy 2>&1 | grep -iv gomemlimit
+  echo "---- webmacro ----"
+  docker compose --profile https logs --tail 15 webmacro 2>&1
+  echo
+  echo "흔한 원인: 클라우드 콘솔 방화벽에서 80·443이 막힘 / 서버 공인 IP가 바뀜"
+  echo "다시 확인:  cd $(pwd) && docker compose --profile https logs --tail 30 caddy"
+fi
 
 PW_SHOW="$(grep '^WEBMACRO_PANEL_PASSWORD=' .env | cut -d= -f2-)"
 cat <<EOF
 
 ────────────────────────────────────────────
- ✅ 완료
+ $( [ -n "$ok" ] && echo "✅ 완료" || echo "⚠️ 설치는 끝났지만 확인이 필요합니다 (위 내용 참고)" )
 
  휴대폰에서 열기:  https://$DOMAIN
  비밀번호:         $PW_SHOW
