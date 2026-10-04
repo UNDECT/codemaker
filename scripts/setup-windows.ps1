@@ -20,6 +20,10 @@ function Winget-Install($id, $extra) {
   if ($LASTEXITCODE -eq 0) { Write-Host "  이미 설치됨: $id"; return }
   $wa = @('install', '-e', '--id', $id, '--accept-package-agreements', '--accept-source-agreements', '--silent') + $extra
   & winget @wa
+  if ($LASTEXITCODE -ne 0) {   # -e 는 대소문자까지 같아야 해서, 못 찾으면 한 번 더 느슨하게
+    $wa = @('install', '--id', $id, '--accept-package-agreements', '--accept-source-agreements', '--silent') + $extra
+    & winget @wa
+  }
   if ($LASTEXITCODE -ne 0) { Write-Host "  [!] $id 설치가 끝나지 않았습니다 (코드 $LASTEXITCODE)" -ForegroundColor Yellow }
 }
 function Find-Python {
@@ -96,7 +100,7 @@ try {
   Write-Host "===========================================================" -ForegroundColor Green
   Write-Host " 설치 끝. 이제 남은 건:" -ForegroundColor Green
   Write-Host "  1) 작업 표시줄 오른쪽 Tailscale 아이콘 → Log in (휴대폰과 같은 계정)"
-  Write-Host "  2) 곧 뜨는 검은 창의 '비밀번호'를 메모"
+  Write-Host "  2) 비밀번호는 $Dest\data\password.txt 에 있습니다"
   Write-Host "  3) '보안 경고'가 뜨면 개인·공용 체크 → 액세스 허용"
   Write-Host "===========================================================" -ForegroundColor Green
   Start-Process -FilePath $bat -WorkingDirectory $Dest

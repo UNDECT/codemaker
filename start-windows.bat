@@ -37,23 +37,41 @@ if not exist ".venv\installed.txt" (
 )
 
 if not exist data mkdir data
-rem 휴대폰(Tailscale)에서 접속할 수 있게 비밀번호를 처음 한 번 만든다
+rem 휴대폰(Tailscale)에서 접속할 수 있게 긴 비밀번호(128비트)를 처음 한 번 만든다
 if not exist "data\password.txt" (
-  "%PY%" -c "import secrets;print(secrets.token_hex(5))" > "data\password.txt" || goto :fail
+  "%PY%" -c "import secrets;print(secrets.token_hex(16))" > "data\password.txt" || goto :fail
 )
 set /p WEBMACRO_PANEL_PASSWORD=<"data\password.txt"
+
+rem 관리 화면은 Tailscale 주소에만 연다 (같은 와이파이의 다른 기기나 인터넷에서는 안 보임)
+rem PC를 막 켰을 때는 Tailscale 연결이 늦을 수 있어 최대 60초 기다린다
+set "TS=%ProgramFiles%\Tailscale\tailscale.exe"
+set "HOST="
+set /a TRIES=0
+:waitts
+if exist "%TS%" for /f "usebackq delims=" %%i in (`"%TS%" ip -4 2^>nul`) do if not defined HOST set "HOST=%%i"
+if defined HOST goto :gothost
+set /a TRIES+=1
+if %TRIES% GEQ 12 goto :gothost
+echo  Tailscale 연결 기다리는 중... (%TRIES%/12)
+timeout /t 5 /nobreak >nul
+goto :waitts
+:gothost
+if not defined HOST (
+  echo  [!] Tailscale 에 로그인돼 있지 않아 이 PC 안에서만 열립니다. 작업 표시줄 Tailscale 아이콘 → Log in 후 다시 실행하세요.
+  set "HOST=127.0.0.1"
+)
+
 echo.
 echo  ===========================================================
-echo   이 PC에서:   http://127.0.0.1:8080
-echo   휴대폰에서:  http://[Tailscale 앱에 나온 이 PC 주소]:8080
-echo   비밀번호:    %WEBMACRO_PANEL_PASSWORD%
+echo   관리 화면:  http://%HOST%:8080   (휴대폰도 이 주소, Tailscale 켜고)
+echo   비밀번호:   data\password.txt 파일 안에 있습니다
 echo   (이 창을 닫으면 매크로도 꺼집니다)
 echo  ===========================================================
 echo  처음 실행 때 "Windows 보안 경고"가 뜨면 [액세스 허용]을 누르세요.
-echo  화면 글자 인식(OCR)을 쓰려면 Tesseract를 따로 설치하세요 (README 참고).
 echo.
-start "" cmd /c "timeout /t 4 >nul & start http://127.0.0.1:8080"
-"%PY%" -m webmacro panel data\config.yaml --host 0.0.0.0
+start "" cmd /c "timeout /t 4 >nul & start http://%HOST%:8080"
+"%PY%" -m webmacro panel data\config.yaml --host %HOST%
 pause
 exit /b 0
 
