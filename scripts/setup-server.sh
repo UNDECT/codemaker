@@ -2,6 +2,8 @@
 # 클라우드 서버(우분투) 한 번에 설정: Docker 설치 → 비밀번호·주소 생성 → 방화벽 → 실행
 # 사용법 (저장소 폴더에서):  sudo bash scripts/setup-server.sh  [내도메인]
 set -euo pipefail
+# 어디서든 멈추면 조용히 끝나지 않고 위치를 알려준다
+trap 'echo; echo "❌ 설치가 ${LINENO}번째 줄에서 멈췄습니다. 이 화면을 캡처해서 보내주세요."' ERR
 cd "$(dirname "$0")/.."
 
 say() { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
@@ -19,7 +21,7 @@ docker compose version >/dev/null 2>&1 || { echo "docker compose 플러그인이
 
 # 1-1. 메모리가 작으면(무료 1GB 서버 등) 스왑 2GB 추가 — 크롬·글자인식이 메모리 부족으로 죽지 않게
 MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-if [ "$MEM_MB" -lt 3000 ] && ! swapon --show | grep -q .; then
+if [ "$MEM_MB" -lt 3000 ] && [ -z "$(swapon --show 2>/dev/null || true)" ] && [ ! -e /swapfile ]; then
   say "메모리 ${MEM_MB}MB → 스왑 2GB 추가"
   fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
   chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
@@ -37,7 +39,9 @@ fi
 # 3. .env (비밀번호는 처음 한 번만 만든다)
 touch .env && chmod 600 .env
 if ! grep -q '^WEBMACRO_PANEL_PASSWORD=.\+' .env; then
-  PW="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  # (주의: `tr </dev/urandom | head` 는 pipefail 에서 SIGPIPE(141)로 스크립트가 조용히 죽는다)
+  PW="$(openssl rand -hex 8 2>/dev/null || python3 -c 'import secrets;print(secrets.token_hex(8))')"
+  [ -n "$PW" ] || { echo "비밀번호를 만들 수 없습니다"; exit 1; }
   sed -i '/^WEBMACRO_PANEL_PASSWORD=/d' .env
   echo "WEBMACRO_PANEL_PASSWORD=$PW" >> .env
 fi
@@ -47,7 +51,7 @@ mkdir -p data
 
 # 4. 방화벽: 80(인증서 발급), 443(HTTPS)
 say "방화벽 80/443 열기"
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q active; then
+if command -v ufw >/dev/null 2>&1 && [ "$(ufw status 2>/dev/null | head -n1 || true)" = "Status: active" ]; then
   ufw allow 80/tcp && ufw allow 443/tcp
 fi
 if command -v iptables >/dev/null 2>&1; then
@@ -66,20 +70,20 @@ docker compose --profile https up -d --build
 #    (인증서를 이미 받아 둔 경우엔 '발급' 로그가 다시 안 나오므로 로그 대신 실제 접속으로 판단)
 say "동작 확인 (최대 2분)"
 ok=""
-for i in $(seq 1 24); do
+for _ in $(seq 1 24); do
   sleep 5
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/login" || true)"
   if [ "$code" = "200" ]; then ok=1; break; fi
-  if docker compose --profile https logs caddy 2>&1 | grep -qi "rateLimited\|too many certificates"; then break; fi
+  if docker compose --profile https logs caddy 2>/dev/null | grep -i "rateLimited\|too many certificates" >/dev/null; then break; fi
 done
 if [ -z "$ok" ]; then
   echo
   echo "⚠️  아직 정상 확인이 안 됐습니다. 아래 내용을 캡처해서 보내주세요."
-  docker compose --profile https ps -a
+  docker compose --profile https ps -a || true
   echo "---- caddy ----"
-  docker compose --profile https logs --tail 15 caddy 2>&1 | grep -iv gomemlimit
+  docker compose --profile https logs --tail 15 caddy 2>&1 | grep -iv gomemlimit || true
   echo "---- webmacro ----"
-  docker compose --profile https logs --tail 15 webmacro 2>&1
+  docker compose --profile https logs --tail 15 webmacro 2>&1 || true
   echo
   echo "흔한 원인: 클라우드 콘솔 방화벽에서 80·443이 막힘 / 서버 공인 IP가 바뀜"
   echo "다시 확인:  cd $(pwd) && docker compose --profile https logs --tail 30 caddy"
