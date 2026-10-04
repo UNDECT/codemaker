@@ -432,3 +432,35 @@ def test_refresh_until_color_appears(panel):
     assert req(base, "/api/start", {})[0] == 200
     wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료")
     assert int(ctl.call(lambda: ctl.driver.page.evaluate("localStorage.n"))) >= 3
+
+
+FORM = """<!doctype html><meta charset=utf-8><body style="margin:0;background:#fff;font-family:sans-serif">
+<div id=code style="position:absolute;left:20px;top:20px;font-size:32px;color:#000">AB-4829</div>
+<input id=box style="position:absolute;left:20px;top:100px;width:200px;height:30px;font-size:18px">
+<button id=ok style="position:absolute;left:20px;top:160px;width:120px;height:40px"
+ onclick="document.body.innerHTML='완료:'+document.getElementById('box').value">확인</button>
+</body>"""
+
+
+def test_read_screen_text_and_type_it(panel):
+    from webmacro import ocr
+    if not ocr.available():
+        pytest.skip("tesseract 없음")
+    base, ctl, tmp = panel
+    (tmp / "form.html").write_text(FORM, encoding="utf-8")
+    site = (tmp / "form.html").as_uri()
+    assert req(base, "/api/settings", {"url": site, "width": 400, "height": 300, "interval": 0.2})[0] == 200
+    region = [10, 10, 230, 70]
+    code, r = req(base, "/api/ocr", {"region": region, "lang": "eng", "psm": 7})
+    assert code == 200 and r["text"] == "AB-4829", r
+    # 녹화 버튼이 만드는 것과 같은 단계: 입력칸 클릭 → 읽기 → 읽은 값 입력 → 확인
+    steps = [{"do": "click", "x": 100, "y": 115},
+             {"do": "read", "region": region, "as": "값1", "lang": "eng", "psm": 7},
+             {"do": "type", "text": "{var:값1}"}, {"do": "click", "x": 80, "y": 180}]
+    assert req(base, "/api/rule/add", {"name": "코드 입력", "when": [{"selector": "#code"}], "steps": steps})[0] == 200
+    assert req(base, "/api/rule/add", {"name": "끝", "when": [{"text": "완료:"}], "after": "stop"})[0] == 200
+    labels = [x["steps"] for x in req(base, "/api/rules")[1]["rules"] if x["name"] == "코드 입력"][0]
+    assert "읽은 값 입력 (값1)" in labels and "글자 읽기 → 값1" in labels
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료")
+    assert ctl.call(lambda: ctl.driver.page.inner_text("body")).strip() == "완료:AB-4829"

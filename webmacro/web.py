@@ -306,14 +306,14 @@ class Controller:
             return {"rule": rule.name, "pattern": rule.then, "positions": pos, "vars": eng.vars}
         return self.call(fn)
 
-    def ocr_region(self, region, lang: str = ocr.DEFAULT_LANG, psm: int = 6) -> dict:
+    def ocr_region(self, region, lang: str = ocr.DEFAULT_LANG, psm: int = 6, chars: str | None = None) -> dict:
         """영역 글자를 읽어 본다 (설정 만들 때 확인용)."""
         if region is not None:
             region = _region_arg(region)
 
         def fn():
             img = self._ensure_driver().screenshot()
-            text = ocr.read_text(img, region, lang=lang, psm=psm)
+            text = ocr.read_text(img, region, lang=lang, psm=psm, chars=chars)
             out = {"text": text, "cuts": ocr.edge_cuts(img, region) if region else []}
             # 한글 모드는 한글 옆 영문·코드를 자주 틀린다(PT-4829 → ㅁ1-4829). 실제 실행처럼 영어 모드 결과도 보여준다
             if "eng" in lang.split("+") and lang != "eng":
@@ -751,7 +751,7 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                 elif path == "/api/ocr":
                     try:
                         r = ctl.ocr_region(body.get("region"), str(body.get("lang") or ocr.DEFAULT_LANG),
-                                           int(body.get("psm") or 6))
+                                           int(body.get("psm") or 6), body.get("chars") or None)
                     except ocr.OcrError as e:
                         self._json({"error": f"OCR 실패: {e}"}, 500)
                         return
@@ -816,8 +816,13 @@ def _step_label(st: dict) -> str:
     k = STEP_KO.get(act, act)
     if act == "click":
         return f"{k} ({st.get('x')}, {st.get('y')})"
+    if act == "read":
+        return f"{k} → {st.get('as')}"
     if act in ("type", "click_text", "wait_text"):
         t = str(st.get("text", ""))
+        m = re.fullmatch(r"\{var:(.+)\}", t)
+        if act == "type" and m:
+            return f"읽은 값 입력 ({m.group(1)})"
         return f"{k} '{'(비공개)' if '{env:' in t else t[:30]}'"
     if act == "press":
         return f"{k} {st.get('key')}"

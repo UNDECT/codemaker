@@ -189,6 +189,11 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
       <div class="hint">'조작' 모드에서 누르고 입력한 것이 순서대로 기록됩니다.</div>
       <ol id="recList"></ol>
       <label class="hint"><input type="checkbox" id="secretType"> 다음 입력은 비밀번호 (녹화에 저장 안 함)</label>
+      <div class="hint" style="margin-top:6px">화면 글자를 보고 입력: ① 조작 모드로 입력칸 누르기 → ② 선택 모드로 읽을 글자 드래그 → ③ 아래 버튼</div>
+      <div class="row" style="margin-top:4px">
+        <select id="readKind"><option value="kor">한글 포함</option><option value="eng">영문·숫자 코드</option><option value="num">숫자만</option></select>
+        <button id="recRead">영역 글자 읽어 입력</button>
+      </div>
       <div class="row" style="margin-top:6px"><button class="pri" id="recStop">녹화 끝 → 규칙 만들기</button><button id="recCancel">취소</button></div>
     </div>
     <div class="row" style="margin-top:8px">
@@ -719,8 +724,11 @@ function recordAct(b) {
   rec.steps.push(step); renderRec();
 }
 function stepText(st) {
+  const v = st.do === 'type' && /^\{var:(.+)\}$/.exec(st.text);
+  if (v) return `읽은 값 입력 (${v[1]})`;
   return ({click:`클릭 (${st.x}, ${st.y})`, type:`입력 '${st.text}'`, press:`키 ${st.key}`, scroll:`스크롤 ${st.dy > 0 ? '아래' : '위'}`,
-           goto:`이동 ${st.url}`, reload:'새로고침', wait:`대기 ${st.sec}초`})[st.do] || st.do;
+           goto:`이동 ${st.url}`, reload:'새로고침', wait:`대기 ${st.sec}초`,
+           read:`글자 읽기 [${(st.region || []).join(', ')}] → ${st.as}`})[st.do] || st.do;
 }
 function renderRec() {
   const ol = $('recList'); ol.replaceChildren();
@@ -736,6 +744,27 @@ $('btnRec').onclick = () => {
   rec = {steps: [], last: Date.now()};
   $('recBox').style.display = 'block'; $('btnRec').classList.add('on'); $('btnRec').textContent = '● 녹화 중';
   setMode('ctl'); renderRec(); toast('녹화 시작: 조작 모드에서 평소처럼 해보세요');
+};
+const READ_KIND = {kor: {lang: 'kor+eng', psm: 6}, eng: {lang: 'eng', psm: 7},
+                   num: {lang: 'eng', psm: 7, chars: '0123456789'}};
+$('recRead').onclick = async () => {
+  if (!rec) return;
+  if (!region) return toast("'선택' 모드에서 읽을 글자를 드래그하세요");
+  const k = READ_KIND[$('readKind').value];
+  let r;
+  try { toast('읽는 중…'); r = await api('/api/ocr', {region, ...k}); } catch (e) { return toast(e.message); }
+  const text = (r.text || '').trim();
+  if (!text) return toast('글자를 못 읽었습니다. 영역을 조금 넓게 다시 그려 보세요');
+  if (text.includes('\n')) return toast('여러 줄이 읽혔습니다. 입력할 한 줄만 감싸도록 다시 그리세요');
+  if (r.cuts && r.cuts.length && !confirm('영역이 글자를 자르고 있습니다. 그래도 쓸까요? (취소 후 "영역 자동 맞춤" 권장)')) return;
+  if (!confirm(`읽은 글자: ${text}\n\n지금 입력칸에 넣고, 녹화에 '읽어서 입력'으로 저장할까요?\n(실행할 때마다 그때 화면에서 새로 읽습니다)`)) return;
+  const name = '값' + (rec.steps.filter(s => s.do === 'read').length + 1);
+  const read = {do: 'read', region: region.slice(0, 4), as: name, lang: k.lang, psm: k.psm};
+  if (k.chars) read.chars = k.chars;
+  rec.steps.push(read, {do: 'type', text: `{var:${name}}`}); rec.last = Date.now(); renderRec();
+  setMode('ctl');
+  try { await api('/api/browser', {action: 'type', text}); setTimeout(shot, 300); }
+  catch (e) { msg($('shotMsg'), e.message, false); }
 };
 function endRec() { rec = null; $('recBox').style.display = 'none'; $('btnRec').classList.remove('on'); $('btnRec').textContent = '● 녹화'; }
 $('recCancel').onclick = () => { if (!rec || !rec.steps.length || confirm('녹화를 버릴까요?')) endRec(); };
