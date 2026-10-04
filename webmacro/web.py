@@ -15,6 +15,7 @@ import logging
 import os
 import queue
 import re
+import socket
 import threading
 import time
 from collections import deque
@@ -226,7 +227,7 @@ class Controller:
             cfg.headless = True
             d = PlaywrightDriver(cfg)
             try:
-                d.start()
+                d.start(strict=reload_config)  # 패널 화면은 접속이 안 돼도 띄워 둔다
             except Exception:
                 d.close()
                 raise
@@ -259,6 +260,8 @@ class Controller:
         act = a.get("action")
         if act == "goto" and not self.allow_file and not config_mod.is_web_url(str(a.get("url", ""))):
             raise ValueError("http:// 또는 https:// 주소만 열 수 있습니다")
+        if act == "goto":
+            check_host(str(a.get("url", "")))
 
         def fn():
             d = self._ensure_driver()
@@ -363,7 +366,7 @@ class Controller:
                     break
                 except Exception as e:
                     attempt += 1
-                    msg = str(e).splitlines()[0]
+                    msg = _short(e)
                     log.error("사이트 접속 실패(%d회): %s", attempt, msg)
                     self.monitor.note("error", f"사이트 접속 실패({attempt}회): {msg}")
                     if attempt == 1 or attempt % 10 == 0:
@@ -520,6 +523,7 @@ class Controller:
 
     def set_site(self, url: str, width=None, height=None, interval=None) -> str:
         """업무 사이트 주소 설정. 연습 사이트에서 바뀌면 연습용 규칙은 지운다(실제 사이트를 잘못 누르지 않게)."""
+        check_host(url)
         text = self.read_text()
         try:
             old_url = (yaml.safe_load(text) or {}).get("url", "")
@@ -833,9 +837,50 @@ def _region_arg(region) -> tuple[int, int, int, int]:
     return r
 
 
+NET_ERRORS = {
+    "ERR_NAME_NOT_RESOLVED": "주소를 찾을 수 없습니다 (오타이거나 없는 사이트)",
+    "ERR_CONNECTION_REFUSED": "사이트가 접속을 거부했습니다 (서버가 꺼져 있거나 포트가 다름)",
+    "ERR_CONNECTION_TIMED_OUT": "사이트 응답이 없습니다 (회사 안에서만 열리는 사이트일 수 있음)",
+    "ERR_ADDRESS_UNREACHABLE": "사이트에 닿을 수 없습니다 (회사 안에서만 열리는 사이트일 수 있음)",
+    "ERR_CONNECTION_RESET": "접속이 끊겼습니다 (사이트가 해외·서버 접속을 막았을 수 있음)",
+    "ERR_CERT_": "사이트 보안 인증서 오류 (https 대신 http 로 시도해 보세요)",
+    "ERR_SSL_": "사이트 보안 연결 오류 (https 대신 http 로 시도해 보세요)",
+    "ERR_INTERNET_DISCONNECTED": "서버 인터넷이 끊겼습니다",
+    "ERR_TOO_MANY_REDIRECTS": "사이트가 계속 다른 주소로 넘깁니다 (로그인 상태를 다시 저장해 보세요)",
+}
+TLD_TYPOS = {"con": "com", "cmo": "com", "ocm": "com", "comm": "com", "co": "com", "nte": "net",
+             "nett": "net", "ogr": "org", "kt": "kr", "ke": "kr", "co.ke": "co.kr", "co.kt": "co.kr"}
+
+
 def _short(e: Exception) -> str:
     s = str(e) or type(e).__name__
+    for code, ko in NET_ERRORS.items():
+        if "net::" + code in s:
+            m = re.search(r" at (\S+)", s)
+            return f"{ko}: {m.group(1) if m else ''}".rstrip(": ")
+    if "Timeout" in s and "exceeded" in s:
+        return "사이트가 너무 느립니다 (시간 초과)"
     return s.splitlines()[0][:300]
+
+
+def _typo_hint(host: str) -> str:
+    for bad, good in sorted(TLD_TYPOS.items(), key=lambda kv: -len(kv[0])):
+        if host.endswith("." + bad):
+            return f" — 혹시 {host[:-len(bad)]}{good} ?"
+    return ""
+
+
+def check_host(url: str):
+    """주소의 사이트 이름이 실제로 있는지 미리 확인(오타로 저장되는 것 방지). IP·localhost 는 통과."""
+    host = urlparse(url.strip()).hostname or ""
+    if not host or host == "localhost" or re.fullmatch(r"[\d.]+|\[?[0-9a-f:]+\]?", host):
+        return
+    try:
+        socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise ValueError(f"'{host}' 주소를 찾을 수 없습니다{_typo_hint(host)} (오타 확인)") from None
+    except OSError:
+        pass  # 확인 자체를 못 하면 막지 않는다
 
 
 def _summary(cfg) -> str:

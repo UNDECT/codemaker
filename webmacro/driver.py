@@ -54,7 +54,8 @@ class PlaywrightDriver(Driver):
             return None
         return (self.cfg.base_dir / self.cfg.session_file).resolve()
 
-    def start(self):
+    def start(self, strict: bool = True):
+        """strict=False면 첫 접속이 실패해도 브라우저는 띄워 둔다(패널 화면에서 주소를 고칠 수 있게)."""
         from playwright.sync_api import sync_playwright
 
         self._pw = sync_playwright().start()
@@ -80,7 +81,11 @@ class PlaywrightDriver(Driver):
             ctx_kw["storage_state"] = str(sp)
         self._ctx = self._browser.new_context(**ctx_kw)
         self.page = self._ctx.new_page()
-        self.page.goto(self.cfg.url, wait_until="domcontentloaded")
+        try:
+            self.page.goto(self.cfg.url, wait_until="domcontentloaded")
+        except Exception:
+            if strict:
+                raise
 
     def close(self):
         for obj in (self._ctx, self._browser):

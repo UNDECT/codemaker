@@ -380,3 +380,29 @@ def test_switch_from_demo_to_real_site_and_build_rule(tmp_path):
     finally:
         httpd.shutdown()
         ctl.shutdown()
+
+
+def test_typo_site_rejected_and_unreachable_site_keeps_screen(panel, monkeypatch):
+    import socket
+
+    from webmacro import web
+
+    real = socket.getaddrinfo
+
+    def fake_resolve(host, *a, **k):
+        if str(host).endswith(".con"):
+            raise socket.gaierror("no such host")
+        return real(host, *a, **k)
+    monkeypatch.setattr(web.socket, "getaddrinfo", fake_resolve)
+    base, ctl, _ = panel
+    code, r = req(base, "/api/settings", {"url": "https://naver.con/"})
+    assert code == 400 and "naver.con" in r["error"] and "naver.com" in r["error"]
+    code, r = req(base, "/api/browser", {"action": "goto", "url": "https://naver.con/"})
+    assert code == 400 and "naver.com" in r["error"]
+
+    # 접속이 안 되는 사이트를 저장해도 화면 탭은 떠야 고칠 수 있다
+    assert req(base, "/api/settings", {"url": "http://127.0.0.1:1/"})[0] == 200
+    code, png = req(base, "/api/screenshot")
+    assert code == 200 and png[:4] == b"\x89PNG"
+    assert web._short(RuntimeError("Page.goto: net::ERR_NAME_NOT_RESOLVED at https://naver.con/\nCall log")) \
+        == "주소를 찾을 수 없습니다 (오타이거나 없는 사이트): https://naver.con/"
