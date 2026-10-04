@@ -126,3 +126,33 @@ def test_phone_app_read_and_type_flow(tmp_path):
         httpd.shutdown()
         ctl.shutdown()
     assert errors == []
+
+
+def test_phone_swipe_scrolls_remote_page(tmp_path):
+    sync = pytest.importorskip("playwright.sync_api")
+    from test_web import LONG
+    (tmp_path / "long.html").write_text(LONG, encoding="utf-8")
+    (tmp_path / "config.yaml").write_text("url: " + (tmp_path / "long.html").as_uri()
+                                          + "\nviewport: {width: 400, height: 300}\nrules: []\n", encoding="utf-8")
+    ctl = Controller(tmp_path / "config.yaml", MemoryNotifier(), allow_file=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ctl, LogBuffer(), None))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        with sync.sync_playwright() as p:
+            b = p.chromium.launch()
+            pg = b.new_page(viewport={"width": 390, "height": 844})
+            pg.goto(f"http://127.0.0.1:{httpd.server_address[1]}/")
+            pg.click("nav.tabs button[data-tab=browser]")
+            pg.wait_for_function("document.getElementById('shot').naturalWidth > 0", timeout=30000)
+            box = pg.locator("#shot").bounding_box()
+            x = box["x"] + box["width"] * 0.8
+            pg.mouse.move(x, box["y"] + box["height"] * 0.8); pg.mouse.down()
+            pg.mouse.move(x, box["y"] + box["height"] * 0.2, steps=8); pg.mouse.up()   # 위로 쓸기 → 아래로 스크롤
+            end = time.time() + 10
+            while time.time() < end and ctl.call(lambda: ctl.driver.page.evaluate("scrollY")) == 0:
+                time.sleep(0.3)
+            assert ctl.call(lambda: ctl.driver.page.evaluate("scrollY")) > 0
+            b.close()
+    finally:
+        httpd.shutdown()
+        ctl.shutdown()

@@ -29,7 +29,7 @@ ACTIONS = {
     "wait_text":      {"req": {"text"}, "opt": {"timeout"}},
     "read":           {"req": {"region", "as"}, "opt": {"pattern", "lang", "psm", "chars"}},
     "wait_ocr":       {"req": {"text"}, "opt": {"region", "timeout", "lang", "regex", "psm", "chars"}},
-    "scroll":         {"req": {"dy"}, "opt": {"dx"}},
+    "scroll":         {"req": {"dy"}, "opt": {"dx", "x", "y"}},   # x,y: 그 위치에서 휠 (안쪽 목록 스크롤)
     "goto":           {"req": {"url"}},
     "reload":         {},
     "screenshot":     {"opt": {"name"}},

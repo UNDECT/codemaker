@@ -24,7 +24,7 @@ class Driver:
     def click_text(self, text: str, exact: bool = False, timeout: float = 5): raise NotImplementedError
     def type(self, text: str, selector: str | None = None, delay: float = 0): raise NotImplementedError
     def press(self, key: str): raise NotImplementedError
-    def scroll(self, dx: int, dy: int): raise NotImplementedError
+    def scroll(self, dx: int, dy: int, at=None): raise NotImplementedError
     def goto(self, url: str): raise NotImplementedError
     def reload(self): raise NotImplementedError
     def back(self): raise NotImplementedError
@@ -149,7 +149,9 @@ class PlaywrightDriver(Driver):
     def press(self, key):
         self.page.keyboard.press(key)
 
-    def scroll(self, dx, dy):
+    def scroll(self, dx, dy, at=None):
+        if at:  # 마우스를 그 위치로 옮겨 휠 → 페이지 안의 목록·상자도 스크롤된다
+            self.page.mouse.move(*at)
         self.page.mouse.wheel(dx, dy)
 
     def goto(self, url):

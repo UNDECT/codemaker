@@ -120,7 +120,7 @@ label.chk input{width:22px;height:22px;accent-color:var(--acc);flex:none}
 .hintline{font-size:13px;color:var(--mute);margin:6px 2px}
 .picked{display:flex;align-items:center;gap:10px;background:var(--soft);border-radius:12px;padding:8px 12px;font-size:14px}
 .sw{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);flex:none}
-.keys{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
+.keys{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 4px}
 .keys::-webkit-scrollbar{display:none}
 .keys button{flex:none;min-height:40px;padding:0 14px;border-radius:11px;background:var(--soft);border:1px solid var(--line);font-size:14px;font-weight:600}
 .warn{background:color-mix(in srgb,var(--warn) 14%,var(--card));color:var(--warn);border-radius:12px;padding:10px 12px;font-size:14px;margin-top:8px}
@@ -333,6 +333,7 @@ pre#log{margin:0;max-height:300px;overflow:auto;font:12px/1.4 ui-monospace,Conso
         <button data-add="key"><em>↵</em> 키 누르기</button>
         <button data-add="wait"><em>⏱</em> 기다리기</button>
         <button data-add="notify"><em>🔔</em> 알림 보내기</button>
+        <button data-add="scroll"><em>↕</em> 스크롤</button>
         <button data-add="reload"><em>⟳</em> 새로고침</button>
       </div>
       <div id="wRec" class="hide">
@@ -537,7 +538,7 @@ function mountRemote(parent, m, opts = {}) {
 }
 function setMode(m) {
   mode = m; $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
-  $('modeHint').textContent = {ctl: '화면을 누르면 실제로 클릭됩니다. 두 손가락으로 확대.',
+  $('modeHint').textContent = {ctl: '누르면 클릭, 위아래로 쓸면 스크롤됩니다. 두 손가락으로 확대.',
     pick: '찾을 색을 누르거나, 손가락으로 끌어 영역을 고르세요.', region: '읽을 글자를 손가락으로 끌어 감싸세요.'}[m];
 }
 $$('#modeSeg button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
@@ -657,7 +658,14 @@ $('shot').addEventListener('pointerup', async ev => {
   const wasPinch = !!pinch; endPtr(ev);
   if (!down || wasPinch) { down = null; return; }
   const up = toImg(ev), d0 = down; down = null;
-  if (mode === 'ctl') { tapFx(ev); if (tapHook) tapHook(up); else act({action: 'click', x: up.x, y: up.y}); return; }
+  if (mode === 'ctl') {
+    const ddy = up.y - d0.y, ddx = up.x - d0.x;
+    if (!tapHook && Math.abs(ddy) > 25 && Math.abs(ddy) > Math.abs(ddx)) {   // 위아래로 쓸기 = 스크롤 (손가락 방향대로)
+      const amt = Math.round(-ddy * 2 / 50) * 50 || (ddy < 0 ? 100 : -100);
+      act({action: 'scroll', dy: amt, x: d0.x, y: d0.y}); toast(amt > 0 ? '▼ 아래로 스크롤' : '▲ 위로 스크롤'); return;
+    }
+    tapFx(ev); if (tapHook) tapHook(up); else act({action: 'click', x: up.x, y: up.y}); return;
+  }
   if (Math.abs(up.x - d0.x) > 6 && Math.abs(up.y - d0.y) > 6) {
     setRegion([Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)]);
   } else if (mode === 'pick') {
@@ -740,7 +748,7 @@ const STEP_TX = st => {
   const v = st.do === 'type' && /^\{var:(.+)\}$/.exec(st.text || '');
   if (v) return `읽은 글자 입력 (${v[1]})`;
   return ({click_match: '🎯 찾은 색 누르기', click: `👆 누르기 (${st.x}, ${st.y})`, type: `⌨️ 입력 '${st.text}'`, press: `↵ 키 ${st.key}`,
-    wait: `⏱ ${st.sec}초 기다리기`, scroll: `↕ 스크롤 ${st.dy > 0 ? '아래' : '위'}`, goto: `🔗 이동 ${st.url}`, reload: '⟳ 새로고침',
+    wait: `⏱ ${st.sec}초 기다리기`, scroll: `↕ 스크롤 ${st.dy > 0 ? '아래' : '위'} ${Math.abs(st.dy)}`, goto: `🔗 이동 ${st.url}`, reload: '⟳ 새로고침',
     read: `🔤 글자 읽기 → ${st.as}`, notify: `🔔 알림 '${st.message}'`, screenshot: '📷 화면 저장',
     auto_checkout: `🛒 ${st.pay || '무통장입금'} 자동 진행${st.depositor ? ' · 입금자 ' + st.depositor : ''}`})[st.do] || st.do;
 };
@@ -825,6 +833,12 @@ $$('[data-add]').forEach(b => b.onclick = async () => {
   if (k === 'rec') return beginRec();
   if (k === 'click_match') wiz.steps.push({do: 'click_match'});
   if (k === 'reload') wiz.steps.push({do: 'reload'});
+  if (k === 'scroll') {
+    const v = await sheet('스크롤', {text: '페이지 안의 목록만 스크롤하려면 녹화에서 그 목록 위를 손가락으로 쓸어 주세요.',
+      fields: [{key: 'dir', label: '방향', type: 'select', options: [['1', '▼ 아래로'], ['-1', '▲ 위로']]},
+               {key: 'amt', label: '얼마나', type: 'select', options: [['300', '조금'], ['600', '반 화면'], ['1000', '한 화면'], ['5000', '끝까지']]}], ok: '추가'});
+    if (v) wiz.steps.push({do: 'scroll', dy: +v.dir * +v.amt});
+  }
   if (k === 'checkout') return addCheckout();
   if (k === 'read') return addRead();
   if (k === 'type') { const v = await sheet('글자 입력', {fields: [{key: 't', label: '입력할 글자 (먼저 입력칸을 누르는 단계가 있어야 해요)'}]}); if (v && v.t) wiz.steps.push({do: 'type', text: v.t}); }
@@ -905,7 +919,7 @@ function recordAct(b) {
   if (b.action === 'click') st = {do: 'click', x: b.x, y: b.y};
   else if (b.action === 'type') { if (b.secret) { toast('비밀번호는 녹화하지 않았어요'); return; } st = {do: 'type', text: b.text}; }
   else if (b.action === 'press') st = {do: 'press', key: b.key};
-  else if (b.action === 'scroll') st = {do: 'scroll', dy: b.dy};
+  else if (b.action === 'scroll') st = b.x != null ? {do: 'scroll', dy: b.dy, x: b.x, y: b.y} : {do: 'scroll', dy: b.dy};
   else if (b.action === 'goto') st = {do: 'goto', url: b.url};
   else if (b.action === 'reload') st = {do: 'reload'};
   if (!st) return;

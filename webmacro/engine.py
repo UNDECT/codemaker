@@ -253,7 +253,10 @@ class Engine:
                                                   chars=s.get("chars")), q, rx) is not None for lg in langs)
             self._wait_until(seen, float(s.get("timeout", 10)), "OCR 글자")
         elif act == "scroll":
-            d.scroll(int(s.get("dx", 0)), int(s["dy"]))
+            if "x" in s and "y" in s:
+                d.scroll(int(s.get("dx", 0)), int(s["dy"]), at=(int(s["x"]), int(s["y"])))
+            else:
+                d.scroll(int(s.get("dx", 0)), int(s["dy"]))
         elif act == "goto":
             url = self.fill(str(s["url"]))
             if not self.allow_file and not is_web_url(url):

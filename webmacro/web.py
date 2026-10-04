@@ -272,7 +272,8 @@ class Controller:
             elif act == "press":
                 d.press(str(a["key"]))
             elif act == "scroll":
-                d.scroll(0, int(a.get("dy", 400)))
+                at = (int(a["x"]), int(a["y"])) if "x" in a and "y" in a else None
+                d.scroll(0, int(a.get("dy", 400)), at=at)
             elif act == "goto":
                 d.goto(str(a["url"]).strip())
             elif act == "reload":

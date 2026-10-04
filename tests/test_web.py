@@ -517,3 +517,30 @@ def test_auto_checkout_stops_on_captcha_and_unknown_field(panel):
     assert req(base, "/api/start", {})[0] == 200
     wait_for(lambda: not req(base, "/api/state")[1]["running"] and req(base, "/api/state")[1]["last_result"], 90)
     assert any("입금자명" in m for m in ctl.notifier.messages), ctl.notifier.messages
+
+
+LONG = """<!doctype html><meta charset=utf-8><body style="margin:0;height:3000px">
+<div id=box style="position:absolute;left:0;top:0;width:200px;height:150px;overflow:auto">
+<div style="height:2000px">목록</div></div></body>"""
+
+
+def test_scroll_page_and_inner_box(panel):
+    base, ctl, tmp = panel
+    (tmp / "long.html").write_text(LONG, encoding="utf-8")
+    assert req(base, "/api/settings", {"url": (tmp / "long.html").as_uri(), "width": 400, "height": 300})[0] == 200
+    req(base, "/api/screenshot")
+    page_y = lambda: ctl.call(lambda: ctl.driver.page.evaluate("[scrollY, box.scrollTop]"))
+    # 목록 위에서 휠 → 목록만 내려감
+    assert req(base, "/api/browser", {"action": "scroll", "dy": 300, "x": 100, "y": 50})[0] == 200
+    assert page_y()[0] == 0 and page_y()[1] > 0
+    # 매크로 단계로도 (x, y 지정)
+    from webmacro import config as config_mod
+    from webmacro.engine import Engine
+    cfg = config_mod.parse({"url": "x", "patterns": {"p": [{"do": "scroll", "dy": 400, "x": 100, "y": 50}]}, "rules": []})
+    before = page_y()[1]
+    ctl.call(lambda: Engine(cfg, ctl.driver).run_pattern("p", {}))
+    wait_for(lambda: page_y()[1] > before, 5)   # 휠 스크롤은 조금 늦게 반영된다
+    assert page_y()[0] == 0
+    # 목록 밖에서 휠 → 페이지가 내려감
+    assert req(base, "/api/browser", {"action": "scroll", "dy": 300, "x": 300, "y": 200})[0] == 200
+    assert page_y()[0] > 0
