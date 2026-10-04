@@ -213,7 +213,7 @@ pre#log{margin:0;max-height:300px;overflow:auto;font:12px/1.4 ui-monospace,Conso
     <div class="tpl">
       <button data-tpl="buy"><span class="ico">🛒</span><span><b>색이 나오면 클릭 → 무통장입금까지</b><small>새로고침하며 기다리다가 아이템이 뜨면 바로 주문</small></span></button>
       <button data-tpl="click"><span class="ico">🎯</span><span><b>색이 보이면 클릭하고 따라하기</b><small>버튼 색을 찾아 누르고, 녹화한 동작을 반복</small></span></button>
-      <button data-tpl="ocr"><span class="ico">🔤</span><span><b>화면 글자를 읽어서 입력</b><small>코드·번호를 보고 입력칸에 넣기</small></span></button>
+      <button data-tpl="ocr"><span class="ico">🔤</span><span><b>이 화면이 나오면 글자 읽어서 입력</b><small>화면의 코드·번호·이름을 읽어 입력칸에 치고 확인</small></span></button>
       <button data-tpl="stop"><span class="ico">⏹</span><span><b>이 글자가 보이면 멈춤</b><small>예: '처리할 항목이 없습니다'</small></span></button>
     </div>
   </div>
@@ -328,7 +328,7 @@ pre#log{margin:0;max-height:300px;overflow:auto;font:12px/1.4 ui-monospace,Conso
         <button class="main" data-add="rec"><em>●</em> 화면에서 따라하기 (녹화)</button>
         <button data-add="click_match" id="addClickMatch"><em>🎯</em> 찾은 색 누르기</button>
         <button data-add="checkout"><em>🛒</em> 무통장입금 자동 진행</button>
-        <button data-add="read"><em>🔤</em> 화면 글자 읽어 입력</button>
+        <button data-add="read"><em>🔤</em> 글자 읽어서 입력</button>
         <button data-add="type"><em>⌨️</em> 글자 입력</button>
         <button data-add="key"><em>↵</em> 키 누르기</button>
         <button data-add="wait"><em>⏱</em> 기다리기</button>
@@ -657,7 +657,7 @@ $('shot').addEventListener('pointerup', async ev => {
   const wasPinch = !!pinch; endPtr(ev);
   if (!down || wasPinch) { down = null; return; }
   const up = toImg(ev), d0 = down; down = null;
-  if (mode === 'ctl') { tapFx(ev); act({action: 'click', x: up.x, y: up.y}); return; }
+  if (mode === 'ctl') { tapFx(ev); if (tapHook) tapHook(up); else act({action: 'click', x: up.x, y: up.y}); return; }
   if (Math.abs(up.x - d0.x) > 6 && Math.abs(up.y - d0.y) > 6) {
     setRegion([Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)]);
   } else if (mode === 'pick') {
@@ -731,7 +731,7 @@ $$('[data-tpl]').forEach(b => b.onclick = () => {
   const t = b.dataset.tpl;
   if (t === 'buy') openWiz({when: 'color', steps: [{do: 'click_match'}], addCheckout: true, after: 'continue', refresh: true, name: '아이템 구매'});
   if (t === 'click') openWiz({when: 'color', steps: [{do: 'click_match'}], name: ''});
-  if (t === 'ocr') openWiz({when: 'text', addRead: true});
+  if (t === 'ocr') openWiz({when: 'text', addRead: true, screenHint: true});
   if (t === 'stop') openWiz({when: 'text', after: 'stop', stopOnly: true});
 });
 
@@ -746,7 +746,7 @@ const STEP_TX = st => {
 };
 function openWiz(preset = {}) {
   wiz = {page: 1, when: preset.when || null, steps: preset.steps ? preset.steps.map(s => ({...s})) : [], after: preset.after || 'continue',
-         refresh: !!preset.refresh, name: preset.name || '', stopOnly: !!preset.stopOnly, color: null, region: null, text: '', recording: false};
+         refresh: !!preset.refresh, name: preset.name || '', screenHint: !!preset.screenHint, stopOnly: !!preset.stopOnly, color: null, region: null, text: '', recording: false};
   pick = null; region = null;
   $('wName').value = wiz.name; $('wRefresh').checked = wiz.refresh || !!(rulesInfo && rulesInfo.refresh);
   $('wiz').classList.remove('hide'); document.body.style.overflow = 'hidden';
@@ -800,7 +800,8 @@ function chooseWhen(k) {
     const f = el('label', 'field'), i = el('input'); i.type = 'text'; i.id = 'wText';
     i.placeholder = k === 'text' ? (wiz.stopOnly ? '예: 처리할 항목이 없습니다' : '예: 구매 가능') : '예: /order';
     if (k === 'url') { try { i.value = new URL($('addr').value).pathname; } catch (_) {} } else i.value = wiz.text;
-    f.append(el('span', '', k === 'text' ? '페이지에 이 글자가 있으면' : '주소에 이 글자가 들어 있으면'), i); box.append(f);
+    f.append(el('span', '', k === 'text' ? (wiz.screenHint ? '이 글자가 있는 화면이 나오면 (예: 화면 제목 \'인증 코드 입력\')' : '페이지에 이 글자가 있으면') : '주소에 이 글자가 들어 있으면'), i); box.append(f);
+    if (wiz.screenHint) box.append(el('div', 'hintline', '글씨가 그림으로 되어 있어 안 잡히면 위에서 "이 자리에 글자가 보이면"을 고르세요.'));
   }
 }
 // 2. 무엇을
@@ -815,8 +816,9 @@ function renderSteps() {
   });
   $('wNoSteps').classList.toggle('hide', wiz.steps.length > 0);
   $('addClickMatch').classList.toggle('hide', wiz.when !== 'color');
-  $('wAdds').classList.toggle('hide', wiz.recording);
-  $('wRec').classList.toggle('hide', !wiz.recording);
+  const busy = wiz.recording || !!readWaiter;   // 녹화·글자 읽기 중엔 원격 화면을 보여 준다
+  $('wAdds').classList.toggle('hide', busy);
+  $('wRec').classList.toggle('hide', !busy);
 }
 $$('[data-add]').forEach(b => b.onclick = async () => {
   const k = b.dataset.add;
@@ -841,31 +843,52 @@ async function addCheckout() {
   if (v.dep.trim()) st.depositor = v.dep.trim();
   wiz.steps.push(st); renderSteps();
 }
-let readWaiter = null;
+let readWaiter = null, tapHook = null;
+// 글자 읽어 입력: ① 읽을 글자 감싸기 → ② 넣을 입력칸 누르기 → ③ 입력 후 Enter/버튼/그대로 (여러 칸이면 반복)
 async function addRead() {
-  const v = await sheet('화면 글자 읽어 입력', {text: '① 브라우저에서 값을 넣을 입력칸을 먼저 누르는 단계가 있어야 합니다 (녹화로 추가).\n② 다음 화면에서 읽을 글자를 손가락으로 끌어 감싸세요.',
-    fields: [{key: 'kind', label: '글자 종류', type: 'select', options: [['kor', '한글 포함'], ['eng', '영문·숫자 코드'], ['num', '숫자만']]}], ok: '영역 고르기'});
+  const v = await sheet('화면 글자 읽어서 입력', {text: '① 읽을 글자를 손가락으로 끌어 감싸고\n② 그 값을 넣을 입력칸을 누르고\n③ 입력 후 Enter나 버튼을 누를지 고르면 끝.\n실행할 때마다 그때 화면의 글자를 새로 읽습니다.',
+    fields: [{key: 'kind', label: '읽을 글자 종류', type: 'select', options: [['kor', '한글 포함'], ['eng', '영문·숫자 코드'], ['num', '숫자만']]}], ok: '시작'});
   if (!v) return;
   const K = {kor: {lang: 'kor+eng', psm: 6}, eng: {lang: 'eng', psm: 7}, num: {lang: 'eng', psm: 7, chars: '0123456789'}}[v.kind];
-  const box = $('wRec'); $('wAdds').classList.add('hide'); box.classList.remove('hide');
-  box.querySelector('.rec').innerHTML = '<i></i> 읽을 글자를 끌어 감싸세요';
-  $('wRecDone').textContent = '취소';
-  mountRemote($('remoteRec'), 'region', {noCtl: true, lockMode: true});
-  if (!$('shot').naturalWidth) shot();
+  const box = $('wRec'), say = t => box.querySelector('.rec').innerHTML = '<i></i> ' + t;
+  $('wAdds').classList.add('hide'); box.classList.remove('hide'); $('wRecDone').textContent = '취소';
   readWaiter = true;
+  const pickRegion = () => {
+    say('① 읽을 글자를 손가락으로 끌어 감싸세요'); region = null;
+    mountRemote($('remoteRec'), 'region', {noCtl: true, lockMode: true}); if (!$('shot').naturalWidth) shot();
+  };
+  pickRegion();
   onRegion = async r => {
     try {
       const x = await api('/api/ocr', {region: r, ...K}), text = (x.text || '').trim();
       if (!text) return toast('글자를 못 읽었어요. 조금 넓게 다시 그려 보세요');
       if (text.includes('\n')) return toast('여러 줄이 읽혔어요. 한 줄만 감싸 주세요');
-      if (!await confirmSheet('이렇게 읽혔어요', text + '\n\n실행할 때마다 그때 화면에서 새로 읽어서 입력합니다.', '추가')) return;
-      const name = '값' + (wiz.steps.filter(s => s.do === 'read').length + 1), st = {do: 'read', region: r.slice(0, 4), as: name, lang: K.lang, psm: K.psm};
-      if (K.chars) st.chars = K.chars;
-      wiz.steps.push(st, {do: 'type', text: `{var:${name}}`}); endRead();
+      if (x.cuts && x.cuts.length) toast('영역이 글자를 조금 자르고 있어요. 이상하면 넓게 다시 그리세요');
+      if (!await confirmSheet('이렇게 읽혔어요', text, '맞아요')) return;
+      const name = '값' + (wiz.steps.filter(s => s.do === 'read').length + 1), rd = {do: 'read', region: r.slice(0, 4), as: name, lang: K.lang, psm: K.psm};
+      if (K.chars) rd.chars = K.chars;
+      onRegion = null; region = null;
+      say('② 이 값을 넣을 입력칸을 누르세요'); mountRemote($('remoteRec'), 'ctl', {noCtl: true, lockMode: true});
+      tapHook = async p => {
+        tapHook = null;
+        wiz.steps.push(rd, {do: 'click', x: p.x, y: p.y}, {do: 'type', text: `{var:${name}}`});
+        await act({action: 'click', x: p.x, y: p.y}); await act({action: 'type', text});   // 실제로도 넣어 본다
+        renderSteps();
+        const nx = await menuSheet('③ 입력한 다음에는?', `'${text}' 입력함`,
+          [['enter', '↵ Enter 누르기'], ['btn', '👆 화면에서 버튼 누르기 (확인·제출 등)'], ['more', '＋ 다른 칸도 읽어서 입력'], ['none', '그대로 두기']]);
+        if (nx === 'enter') { wiz.steps.push({do: 'press', key: 'Enter'}); await act({action: 'press', key: 'Enter'}); }
+        if (nx === 'more') { renderSteps(); return pickRegion(); }
+        if (nx === 'btn') {
+          say('누를 버튼을 화면에서 누르세요');
+          tapHook = async q => { tapHook = null; wiz.steps.push({do: 'click', x: q.x, y: q.y}); await act({action: 'click', x: q.x, y: q.y}); endRead(); toast('추가했습니다'); };
+          return;
+        }
+        endRead(); toast('추가했습니다');
+      };
     } catch (e) { toast(e.message); }
   };
 }
-function endRead() { readWaiter = null; onRegion = null; region = null; $('wRecDone').textContent = '녹화 끝'; $('wRec').classList.add('hide'); $('wAdds').classList.remove('hide'); renderSteps(); }
+function endRead() { readWaiter = null; tapHook = null; onRegion = null; region = null; $('wRecDone').textContent = '녹화 끝'; $('wRec').classList.add('hide'); $('wAdds').classList.remove('hide'); renderSteps(); }
 // 녹화
 let recLast = 0;
 function beginRec() {
@@ -900,7 +923,7 @@ function whenTx() {
 }
 function renderSummary() {
   $('wRefreshRow').classList.toggle('hide', wiz.when !== 'color');
-  if (!$('wName').value) $('wName').value = wiz.stopOnly ? '업무 종료' : wiz.steps.some(s => s.do === 'auto_checkout') ? '아이템 구매' : (wiz.when === 'color' ? '색 클릭' : '매크로') + ((rulesInfo ? rulesInfo.rules.length : 0) + 1);
+  if (!$('wName').value) $('wName').value = wiz.stopOnly ? '업무 종료' : wiz.steps.some(s => s.do === 'auto_checkout') ? '아이템 구매' : wiz.steps.some(s => s.do === 'read') ? '글자 읽어 입력' : (wiz.when === 'color' ? '색 클릭' : '매크로') + ((rulesInfo ? rulesInfo.rules.length : 0) + 1);
   const s = $('wSummary'); s.replaceChildren(el('div', '', '언제: ' + whenTx()));
   const steps = wiz.steps.length ? wiz.steps : (wiz.after === 'stop' ? [{do: 'screenshot'}] : []);
   s.append(el('div', '', '할 일: ' + (steps.map(STEP_TX).join(' → ') || '(없음)')), el('div', '', '그 다음: ' + (wiz.after === 'stop' ? '매크로 끝냄' : '계속 지켜봄')));
