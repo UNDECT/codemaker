@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>연습용 결재함</title>
+<style>
+  body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans CJK KR",sans-serif;background:#f4f5f7;color:#222}
+  header{background:#1f3a8a;color:#fff;padding:14px 24px;font-size:20px;font-weight:bold}
+  main{padding:24px}
+  .info{font-size:18px;margin-bottom:18px}
+  .doc{position:absolute;left:24px;top:150px;width:520px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:18px 20px;font-size:18px}
+  .doc .no{color:#555;font-size:16px;margin-bottom:6px}
+  #approve{position:absolute;left:620px;top:170px;width:150px;height:48px;border:0;border-radius:8px;background:#E53935;color:#fff;font-size:18px;font-weight:bold;cursor:pointer}
+  #dialog{display:none;position:absolute;left:300px;top:320px;width:360px;background:#fff;border:2px solid #333;border-radius:10px;padding:20px;text-align:center;font-size:18px}
+  #ok{margin-top:14px;width:140px;height:44px;border:0;border-radius:8px;background:#2E7D32;color:#fff;font-size:17px;font-weight:bold;cursor:pointer}
+  #done{display:none;position:absolute;left:24px;top:150px;font-size:22px;font-weight:bold}
+  #log{position:absolute;left:24px;top:480px;font-size:14px;color:#666;white-space:pre-line}
+</style>
+</head>
+<body>
+<header>연습용 결재함 (webmacro 데모)</header>
+<main>
+  <div class="info">대기 문서: <b id="left">5</b>건 · 처리한 문서: <b id="count">0</b>건</div>
+  <div class="doc" id="doc"><div class="no">문서번호 <span id="docno">D-1001</span></div><div id="title">출장비 정산 요청</div></div>
+  <button id="approve">결재</button>
+  <div id="dialog">결재하시겠습니까?<br><button id="ok">확인</button></div>
+  <div id="done">처리할 항목이 없습니다</div>
+  <div id="log"></div>
+</main>
+<script>
+  // 새로고침하면 처음부터 다시 (매크로를 여러 번 연습할 수 있게)
+  const titles = ["출장비 정산 요청", "비품 구매 요청", "휴가 신청", "교육비 지원", "외근 보고"];
+  let left = titles.length, n = 0, clicks = 0;
+  const $ = id => document.getElementById(id);
+  function show() {
+    if (left === 0) { ["doc", "approve"].forEach(i => $(i).style.display = "none"); $("done").style.display = "block"; return; }
+    $("docno").textContent = "D-" + (1001 + n); $("title").textContent = titles[n];
+    $("doc").style.display = "block"; $("approve").style.display = "block";
+  }
+  $("approve").onclick = () => { clicks++; $("dialog").style.display = "block"; };
+  $("ok").onclick = () => {
+    $("dialog").style.display = "none"; $("doc").style.display = "none"; $("approve").style.display = "none";
+    $("log").textContent += `${new Date().toLocaleTimeString()}  ${$("docno").textContent} ${titles[n]} → 결재 완료\n`;
+    n++; left--; $("left").textContent = left; $("count").textContent = n;
+    setTimeout(show, 800);   // 실제 사이트처럼 다음 문서가 조금 늦게 뜬다
+  };
+  show();
+</script>
+</body>
+</html>

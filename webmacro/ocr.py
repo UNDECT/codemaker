@@ -21,8 +21,18 @@ class OcrError(RuntimeError):
     pass
 
 
+WINDOWS_PATHS = (r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                 r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe")
+
+
 def tesseract_path() -> str | None:
-    return os.environ.get("WEBMACRO_TESSERACT") or shutil.which("tesseract")
+    found = os.environ.get("WEBMACRO_TESSERACT") or shutil.which("tesseract")
+    if found:
+        return found
+    for p in WINDOWS_PATHS:  # 윈도우 기본 설치 위치 (PATH에 안 넣어도 찾음)
+        if os.path.isfile(p):
+            return p
+    return None
 
 
 def available() -> bool:

@@ -6,3 +6,4 @@ state/
 .env
 snapshot.png
 data/
+.venv/

@@ -302,3 +302,25 @@ def test_dry_run_not_counted(panel):
     wait_for(lambda: not req(base, "/api/state")[1]["running"])
     m = req(base, "/api/state")[1]["monitor"]
     assert m["today"]["done"] == 0 and m["today"]["rules"] == {}
+
+
+def test_first_run_demo(tmp_path):
+    """처음 실행: 연습용 결재함 설정이 만들어지고, 그대로 시작하면 5건 처리 후 업무 종료."""
+    pytest.importorskip("playwright.sync_api")
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), lambda *a: None)  # 빈 포트 얻기
+    port = httpd.server_address[1]
+    httpd.server_close()
+    ctl = Controller(tmp_path / "data" / "config.yaml", MemoryNotifier(), demo_port=port)
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(ctl, LogBuffer(), "pw"))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        assert f"http://127.0.0.1:{port}/demo" in (tmp_path / "data" / "config.yaml").read_text(encoding="utf-8")
+        assert raw(base, "/demo")[0] == 200                       # 로그인 없이 열림
+        assert req(base, "/api/start", {})[0] == 200
+        wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료", timeout=60)
+        m = req(base, "/api/state")[1]["monitor"]
+        assert m["today"]["rules"] == {"빨간 결재 버튼": 5, "할 일 없음 → 업무 종료": 1}
+    finally:
+        httpd.shutdown()
+        ctl.shutdown()

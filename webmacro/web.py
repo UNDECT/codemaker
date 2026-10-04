@@ -37,6 +37,34 @@ log = logging.getLogger("webmacro")
 
 PANEL_HTML = Path(__file__).with_name("panel.html")
 LOGIN_HTML = Path(__file__).with_name("login.html")
+DEMO_HTML = Path(__file__).with_name("demo.html")
+
+DEMO_CONFIG = """\
+# 처음 실행하면 만들어지는 연습용 설정 — 내장 '연습용 결재함' 페이지를 자동으로 처리합니다.
+# 현황 탭에서 ▶ 시작을 눌러 보세요. 실제 사이트는 '설정' 탭에서 주소를 바꾸고 규칙을 고치면 됩니다.
+url: http://127.0.0.1:{port}/demo
+viewport: {{width: 1280, height: 720}}
+session_file: state/session.json
+interval: 1
+recheck_minutes: 0
+
+patterns:
+  결재하기:
+    - {{do: click_match}}                                  # 빨간 '결재' 버튼 클릭
+    - {{do: wait_color, color: "#2E7D32", timeout: 5, as: 확인}}   # 초록 '확인' 팝업이 뜰 때까지
+    - {{do: click_match, target: 확인}}
+
+rules:
+  - name: 할 일 없음 → 업무 종료
+    when: {{text: 처리할 항목이 없습니다}}
+    then: [{{do: screenshot, name: done}}]
+    after: stop
+
+  - name: 빨간 결재 버튼
+    when:
+      - {{color: "#E53935", tolerance: 15, min_pixels: 100}}
+    then: 결재하기
+"""
 SHOT_RE = re.compile(r"^[\w.\-]+\.png$")
 
 NEW_CONFIG = """\
@@ -100,7 +128,8 @@ class LogBuffer(logging.Handler):
 
 # ---------- 브라우저 작업 스레드 ----------
 class Controller:
-    def __init__(self, config_path: Path, notifier: Notifier | None = None, allow_file: bool | None = None):
+    def __init__(self, config_path: Path, notifier: Notifier | None = None, allow_file: bool | None = None,
+                 demo_port: int | None = None):
         self.config_path = Path(config_path).resolve()
         # 서버 파일을 화면에 띄우지 못하게 file:// 주소는 기본 금지 (로컬 시험용으로만 WEBMACRO_ALLOW_FILE=1)
         self.allow_file = os.environ.get("WEBMACRO_ALLOW_FILE") == "1" if allow_file is None else allow_file
@@ -118,7 +147,8 @@ class Controller:
         self.monitor = Monitor(self.config_path.parent / "state" / "stats.json")
         if not self.config_path.exists():
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            self.config_path.write_text(NEW_CONFIG, encoding="utf-8")
+            first = DEMO_CONFIG.format(port=demo_port) if demo_port else NEW_CONFIG
+            self.config_path.write_text(first, encoding="utf-8")
         self.thread = threading.Thread(target=self._loop, name="browser", daemon=True)
         self.thread.start()
 
@@ -395,7 +425,8 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
     auth = auth or Auth(password, ctl.config_path.parent / "state" / "auth.json")
     if trust_proxy is None:
         trust_proxy = os.environ.get("WEBMACRO_TRUST_PROXY") == "1"
-    public = {"/login", "/api/login", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"}
+    # /demo: 연습용 결재함 (서버 안 브라우저가 로그인 없이 열 수 있어야 함, 민감한 내용 없음)
+    public = {"/login", "/api/login", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/demo"}
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "webmacro"
@@ -490,6 +521,8 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                     self._send(200, PANEL_HTML.read_bytes(), "text/html; charset=utf-8")
                 elif path == "/login":
                     self._send(200, LOGIN_HTML.read_bytes(), "text/html; charset=utf-8")
+                elif path == "/demo":
+                    self._send(200, DEMO_HTML.read_bytes(), "text/html; charset=utf-8")
                 elif path == "/manifest.webmanifest":
                     self._send(200, json.dumps(MANIFEST, ensure_ascii=False).encode(),
                                "application/manifest+json", cache="max-age=86400")
@@ -657,7 +690,7 @@ def serve(config_path: str, host: str = "127.0.0.1", port: int = 8080,
     logbuf = LogBuffer()
     log.addHandler(logbuf)
     log.setLevel(logging.INFO)
-    ctl = Controller(Path(config_path))
+    ctl = Controller(Path(config_path), demo_port=port)
     httpd = ThreadingHTTPServer((host, port), make_handler(ctl, logbuf, password))
     log.info("관리 화면: http://%s:%d  (설정: %s)", host, httpd.server_address[1], ctl.config_path)
     if autostart and ctl.should_autostart():
