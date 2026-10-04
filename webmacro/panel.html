@@ -73,6 +73,21 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:13px}
 #mark{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid #fff;outline:2px solid #000;border-radius:50%;pointer-events:none;display:none}
 .pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .sw{width:22px;height:22px;border-radius:4px;border:1px solid var(--line)}
+#setupCard{border-color:var(--acc);display:none}
+#setupCard ol{margin:8px 0 0;padding-left:20px;color:var(--mute);font-size:13px}
+.addr input{min-width:0}
+#recBox{display:none;margin-top:8px;padding:10px;border:2px solid var(--bad);border-radius:10px}
+#recBox ol{margin:6px 0;padding-left:22px;font-size:14px;max-height:180px;overflow:auto}
+#recBox li button{padding:0 6px;margin-left:6px;font-size:12px}
+.recDot{color:var(--bad);animation:pulse 1.2s infinite}
+#btnRec.on{background:var(--bad);border-color:var(--bad);color:#fff}
+#ruleList{list-style:none;margin:0;padding:0}
+#ruleList li{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+#ruleList .rname{font-weight:600}
+#ruleList .rsteps{color:var(--mute);font-size:13px}
+#ruleDlg{border:0;border-radius:14px;padding:16px;background:var(--card);color:var(--fg);width:min(420px,94vw)}
+#ruleDlg label.opt{display:block;padding:6px 0}
+#ruleDlg input[type=text]{width:100%;margin-top:4px}
 #regWarn{display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(217,119,6,.12);color:var(--warn);font-size:14px;align-items:center;gap:8px;flex-wrap:wrap}
 #zoomBar{display:flex;gap:6px;align-items:center;margin-top:8px}
 #zoomBar button{min-width:40px;padding:6px 10px;white-space:nowrap;flex:none}
@@ -97,6 +112,22 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
 <main>
 <!-- ───────── 현황 ───────── -->
 <section class="tab on" id="t-status">
+  <div class="card" id="setupCard">
+    <h2>업무 사이트 설정</h2>
+    <div class="hint" id="setupHint"></div>
+    <div class="row" style="margin-top:8px">
+      <input type="url" id="setupUrl" placeholder="https://업무사이트주소" style="flex:1 1 200px">
+      <button class="pri" id="btnSetup">이 사이트로</button>
+    </div>
+    <ol>
+      <li>업무 사이트 주소 입력 → <b>이 사이트로</b></li>
+      <li><b>화면</b> 탭 → <b>조작</b>에서 직접 로그인 → <b>로그인 상태 저장</b></li>
+      <li><b>화면</b> 탭 → <b>● 녹화</b> → 할 일을 한 번 직접 해보기 → <b>녹화 끝</b> → 언제 실행할지 고르기</li>
+      <li>여기서 <b>시험</b>(클릭 없이 확인) → <b>▶ 시작</b></li>
+    </ol>
+    <div id="setupMsg" class="msg"></div>
+  </div>
+
   <div class="card">
     <div class="hint" id="since">-</div>
     <div id="act">-</div>
@@ -144,7 +175,23 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
 <!-- ───────── 화면 ───────── -->
 <section class="tab" id="t-screen">
   <div class="card">
-    <div class="row">
+    <div class="row addr">
+      <button id="navBack" title="뒤로">◀</button><button id="navFwd" title="앞으로">▶</button><button id="navReload" title="새로고침">⟳</button>
+      <input id="addr" type="url" placeholder="주소 입력 후 이동" style="flex:1 1 150px" autocapitalize="off">
+      <button id="navGo" class="pri">이동</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button id="btnSetSite">지금 주소를 업무 사이트로 저장</button>
+      <button id="btnRec">● 녹화</button>
+    </div>
+    <div id="recBox">
+      <b><span class="recDot">●</span> 녹화 중 · <span id="recCount">0</span>단계</b>
+      <div class="hint">'조작' 모드에서 누르고 입력한 것이 순서대로 기록됩니다.</div>
+      <ol id="recList"></ol>
+      <label class="hint"><input type="checkbox" id="secretType"> 다음 입력은 비밀번호 (녹화에 저장 안 함)</label>
+      <div class="row" style="margin-top:6px"><button class="pri" id="recStop">녹화 끝 → 규칙 만들기</button><button id="recCancel">취소</button></div>
+    </div>
+    <div class="row" style="margin-top:8px">
       <button id="btnShot" class="pri">화면 새로고침</button>
       <label><input type="checkbox" id="auto"> 자동(2초)</label>
       <span class="seg row"><button id="mPick" class="active">선택</button><button id="mCtl">조작</button></span>
@@ -156,7 +203,7 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
       <button id="btnType">입력</button>
       <button data-key="Enter">Enter</button><button data-key="Tab">Tab</button><button data-key="Backspace">⌫</button>
       <button id="btnUp">▲</button><button id="btnDown">▼</button>
-      <button id="btnHome">처음 주소</button><button id="btnReload">새로고침</button>
+      <button id="btnHome">업무 사이트 처음으로</button>
       <button class="pri" id="btnSession">로그인 상태 저장</button>
     </div>
     <div class="hint" id="modeHint" style="margin-top:6px"></div>
@@ -200,7 +247,14 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
     <div id="siteMsg" class="msg"></div>
   </div>
   <div class="card">
-    <h2>규칙·액션패턴</h2>
+    <h2>규칙 목록</h2>
+    <div class="hint">위에서부터 먼저 맞는 규칙 하나가 실행됩니다. 새 규칙은 '화면' 탭의 ● 녹화로 만드세요.</div>
+    <ul id="ruleList" style="margin-top:8px"></ul>
+    <button id="btnAddStop">+ 업무 종료 조건 (이게 보이면 멈춤)</button>
+    <div id="ruleMsg" class="msg"></div>
+  </div>
+  <div class="card">
+    <h2>고급: 설정 직접 편집</h2>
     <div class="hint">"화면" 탭의 + 버튼들이 커서가 있는 줄 아래에 넣어 줍니다. 저장할 때 자동 검사합니다.</div>
     <textarea id="yaml" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
     <div class="row" style="margin-top:8px">
@@ -223,6 +277,26 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
   <button data-tab="config"><b>⚙</b>설정</button>
 </nav>
 <div id="toast"></div>
+<dialog id="ruleDlg">
+  <h2 style="margin:0 0 8px">규칙 만들기</h2>
+  <label class="hint">규칙 이름</label>
+  <input type="text" id="rName" placeholder="예: 결재 처리">
+  <div class="hint" style="margin-top:10px">언제 실행할까요?</div>
+  <label class="opt"><input type="radio" name="rWhen" value="color"> 고른 색이 화면에 보일 때 <code id="rColor">-</code>
+    <div class="hint" id="rColorHint">'선택' 모드에서 그 버튼의 색을 먼저 눌러 고르세요.</div>
+    <label class="hint"><input type="checkbox" id="rClickMatch" checked> 첫 클릭을 '찾은 색 위치 클릭'으로 (버튼 위치가 바뀌어도 따라감)</label></label>
+  <label class="opt"><input type="radio" name="rWhen" value="text"> 페이지에 이 글자가 보일 때
+    <input type="text" id="rText" placeholder="예: 결재 대기"></label>
+  <label class="opt"><input type="radio" name="rWhen" value="ocr"> 고른 영역에 이 글자가 보일 때 (화면 글자 인식)
+    <input type="text" id="rOcr" placeholder="예: 승인 요청"></label>
+  <label class="opt"><input type="radio" name="rWhen" value="url"> 주소에 이 글자가 들어 있을 때
+    <input type="text" id="rUrl" placeholder="예: /approval"></label>
+  <div class="hint" style="margin-top:10px">실행한 뒤에는?</div>
+  <label class="opt"><input type="radio" name="rAfter" value="continue" checked> 계속 감시 (다음 건 처리)</label>
+  <label class="opt"><input type="radio" name="rAfter" value="stop"> 업무 종료 (매크로 멈춤)</label>
+  <div id="rMsg" class="msg"></div>
+  <div class="row" style="margin-top:8px;justify-content:flex-end"><button id="rCancel">취소</button><button class="pri" id="rSave">저장</button></div>
+</dialog>
 <dialog id="viewer"><img id="viewerImg" alt=""></dialog>
 
 <script>
@@ -235,6 +309,7 @@ async function api(path, body) {
   const r = await fetch(path, opt);
   const ct = r.headers.get('Content-Type') || '';
   const data = ct.includes('json') ? await r.json() : await r.blob();
+  if (!ct.includes('json') && r.headers.get('X-Page-Url')) data.pageUrl = decodeURIComponent(r.headers.get('X-Page-Url'));
   if (r.status === 401 && data && data.login) { location.href = '/login'; throw new Error('로그인 필요'); }
   if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
   return data;
@@ -385,6 +460,7 @@ async function shot() {
     const url = URL.createObjectURL(b), img = $('shot'), old = img.src;
     img.onload = () => { if (old.startsWith('blob:')) URL.revokeObjectURL(old); drawMarks(); };
     img.src = url; msg($('shotMsg'), '');
+    if (b.pageUrl && document.activeElement !== $('addr')) $('addr').value = b.pageUrl;
   } catch (e) { msg($('shotMsg'), '화면을 가져오지 못했습니다: ' + e.message, false); }
 }
 function setAuto() { clearInterval(autoTimer); if ($('auto').checked) autoTimer = setInterval(() => { if (tab === 'screen' && !document.hidden) shot(); }, 2000); }
@@ -469,7 +545,8 @@ $('shot').addEventListener('pointerup', async ev => {
   if (!down || wasPinch) { down = null; return; }
   const up = toImg(ev), d0 = down; down = null;
   if (mode === 'ctl') {
-    try { const r = await api('/api/browser', {action:'click', x:up.x, y:up.y}); $('curUrl').textContent = r.url; setTimeout(shot, 300); }
+    recordAct({action:'click', x:up.x, y:up.y});
+    try { const r = await api('/api/browser', {action:'click', x:up.x, y:up.y}); $('curUrl').textContent = r.url; if (r.url) $('addr').value = r.url; setTimeout(shot, 300); }
     catch (e) { msg($('shotMsg'), e.message, false); }
     return;
   }
@@ -530,16 +607,20 @@ setMode('pick');
 $('mPick').onclick = () => setMode('pick'); $('mCtl').onclick = () => setMode('ctl');
 
 async function act(body) {
-  try { const r = await api('/api/browser', body); $('curUrl').textContent = r.url; msg($('shotMsg'), body.action === 'save_session' ? '로그인 상태 저장됨' : '', true); setTimeout(shot, 300); }
+  recordAct(body);
+  try { const r = await api('/api/browser', body); $('curUrl').textContent = r.url; if (r.url) $('addr').value = r.url; msg($('shotMsg'), body.action === 'save_session' ? '로그인 상태 저장됨' : '', true); setTimeout(shot, 300); }
   catch (e) { msg($('shotMsg'), e.message, false); }
 }
-$('btnType').onclick = () => { act({action:'type', text:$('typeText').value}); $('typeText').value = ''; };
+$('btnType').onclick = () => {
+  const secret = $('secretType').checked;
+  act({action:'type', text:$('typeText').value, secret});
+  $('typeText').value = ''; $('secretType').checked = false;
+};
 $('typeText').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnType').click(); });
 document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => act({action:'press', key:b.dataset.key}));
 $('btnUp').onclick = () => act({action:'scroll', dy:-400});
 $('btnDown').onclick = () => act({action:'scroll', dy:400});
 $('btnHome').onclick = () => act({action:'home'});
-$('btnReload').onclick = () => act({action:'reload'});
 $('btnSession').onclick = () => act({action:'save_session'});
 
 $('btnTest').onclick = async () => {
@@ -591,6 +672,149 @@ $('insRead').onclick = () => {
   const name = prompt('읽은 값을 담을 이름 (입력할 때 {var:이름} 으로 사용)', '값');
   if (name) insertLine(`- {do: read, region: [${region.join(', ')}], as: "${name.replace(/"/g, '')}"}`);
 };
+
+// ---- 주소창 ----
+function normUrl(u) { u = u.trim(); if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u; return u; }
+$('navGo').onclick = () => { const u = normUrl($('addr').value); if (u) { $('addr').value = u; act({action:'goto', url:u}); } };
+$('addr').addEventListener('keydown', e => { if (e.key === 'Enter') $('navGo').click(); });
+$('navBack').onclick = () => act({action:'back'});
+$('navFwd').onclick = () => act({action:'forward'});
+$('navReload').onclick = () => act({action:'reload'});
+async function saveSite(url, msgEl) {
+  const r = await api('/api/settings', {url, width:+$('w').value || 1920, height:+$('h').value || 1080, interval:+$('interval').value || 2});
+  msg(msgEl, r.message, true); toast(r.message);
+  await loadConfig(); await loadRules(); setTimeout(shot, 500);
+}
+$('btnSetSite').onclick = async () => {
+  const u = normUrl($('addr').value);
+  if (!u) return toast('주소가 없습니다');
+  if (!confirm(u + '\n\n이 주소를 업무 사이트(매크로 시작 주소)로 저장할까요?')) return;
+  try { await saveSite(u, $('shotMsg')); } catch (e) { msg($('shotMsg'), e.message, false); }
+};
+$('btnSetup').onclick = async () => {
+  const u = normUrl($('setupUrl').value);
+  if (!u) return msg($('setupMsg'), '주소를 입력하세요', false);
+  try { msg($('setupMsg'), '여는 중…'); await saveSite(u, $('setupMsg')); setTab('screen'); setMode('ctl'); }
+  catch (e) { msg($('setupMsg'), e.message, false); }
+};
+
+// ---- 녹화 ----
+let rec = null;   // {steps:[], last:시각}
+function recordAct(b) {
+  if (!rec) return;
+  const now = Date.now(), gap = (now - rec.last) / 1000; rec.last = now;
+  let step = null;
+  if (b.action === 'click') step = {do:'click', x:b.x, y:b.y};
+  else if (b.action === 'type') step = b.secret ? null : {do:'type', text:b.text};
+  else if (b.action === 'press') step = {do:'press', key:b.key};
+  else if (b.action === 'scroll') step = {do:'scroll', dy:b.dy};
+  else if (b.action === 'goto') step = {do:'goto', url:b.url};
+  else if (b.action === 'reload') step = {do:'reload'};
+  if (b.action === 'type' && b.secret) toast('비밀번호 입력은 녹화하지 않았습니다');
+  if (!step) return;
+  if (rec.steps.length && gap > 1.2) rec.steps.push({do:'wait', sec: Math.min(3, Math.round(gap * 2) / 2)});
+  rec.steps.push(step); renderRec();
+}
+function stepText(st) {
+  return ({click:`클릭 (${st.x}, ${st.y})`, type:`입력 '${st.text}'`, press:`키 ${st.key}`, scroll:`스크롤 ${st.dy > 0 ? '아래' : '위'}`,
+           goto:`이동 ${st.url}`, reload:'새로고침', wait:`대기 ${st.sec}초`})[st.do] || st.do;
+}
+function renderRec() {
+  const ol = $('recList'); ol.replaceChildren();
+  rec.steps.forEach((st, i) => {
+    const li = el('li', '', stepText(st)), del = el('button', '', '✕');
+    del.onclick = () => { rec.steps.splice(i, 1); renderRec(); };
+    li.append(del); ol.append(li);
+  });
+  $('recCount').textContent = rec.steps.filter(s => s.do !== 'wait').length;
+}
+$('btnRec').onclick = () => {
+  if (rec) return;
+  rec = {steps: [], last: Date.now()};
+  $('recBox').style.display = 'block'; $('btnRec').classList.add('on'); $('btnRec').textContent = '● 녹화 중';
+  setMode('ctl'); renderRec(); toast('녹화 시작: 조작 모드에서 평소처럼 해보세요');
+};
+function endRec() { rec = null; $('recBox').style.display = 'none'; $('btnRec').classList.remove('on'); $('btnRec').textContent = '● 녹화'; }
+$('recCancel').onclick = () => { if (!rec || !rec.steps.length || confirm('녹화를 버릴까요?')) endRec(); };
+let dlgSteps = [];
+function openRuleDlg(steps, afterStop) {
+  dlgSteps = steps;
+  $('rName').value = afterStop ? '업무 종료' : ''; msg($('rMsg'), '');
+  document.querySelectorAll('input[name=rAfter]').forEach(r => r.checked = (r.value === (afterStop ? 'stop' : 'continue')));
+  $('rClickMatch').parentElement.style.display = steps.length ? '' : 'none';
+  $('rColor').textContent = pick ? pick.color : '-';
+  $('rColor').style.background = pick ? pick.color : ''; $('rColor').style.color = pick ? '#fff' : '';
+  $('rColorHint').style.display = pick ? 'none' : 'block';
+  $('rOcr').value = lastOcr ? ocrGuess() : '';
+  try { $('rUrl').value = new URL($('addr').value).pathname; } catch (_) {}
+  const first = steps.find(s => s.do === 'click');
+  $('rClickMatch').checked = !!(pick && first && Math.abs(first.x - pick.x) < 60 && Math.abs(first.y - pick.y) < 60);
+  document.querySelectorAll('input[name=rWhen]').forEach(r => r.checked = (r.value === (pick && !afterStop ? 'color' : 'text')));
+  $('ruleDlg').showModal();
+}
+$('recStop').onclick = () => {
+  if (!rec || !rec.steps.some(s => s.do !== 'wait')) return toast('녹화된 동작이 없습니다');
+  while (rec.steps.length && rec.steps[rec.steps.length - 1].do === 'wait') rec.steps.pop();
+  openRuleDlg(rec.steps, false);
+};
+$('btnAddStop').onclick = () => openRuleDlg([], true);
+$('rCancel').onclick = () => $('ruleDlg').close();
+$('rSave').onclick = async () => {
+  const kind = (document.querySelector('input[name=rWhen]:checked') || {}).value;
+  const after = document.querySelector('input[name=rAfter]:checked').value;
+  let when = null, steps = dlgSteps.map(s => ({...s}));
+  if (kind === 'color') {
+    if (!pick) return msg($('rMsg'), "먼저 '선택' 모드에서 색을 고르세요 (이 창을 닫고 고른 뒤 다시 '녹화 끝')", false);
+    const c = {color: pick.color, tolerance: 15, min_pixels: 30};
+    if (region) c.region = region;
+    when = [c];
+    if ($('rClickMatch').checked) { const i = steps.findIndex(s => s.do === 'click'); if (i >= 0) steps[i] = {do:'click_match'}; }
+  } else if (kind === 'text') {
+    if (!$('rText').value.trim()) return msg($('rMsg'), '글자를 입력하세요', false);
+    when = [{text: $('rText').value.trim()}];
+  } else if (kind === 'ocr') {
+    if (!region) return msg($('rMsg'), "먼저 '선택' 모드에서 영역을 드래그하세요", false);
+    if (!$('rOcr').value.trim()) return msg($('rMsg'), '찾을 글자를 입력하세요', false);
+    when = [{ocr: $('rOcr').value.trim(), region}];
+  } else if (kind === 'url') {
+    if (!$('rUrl').value.trim()) return msg($('rMsg'), '주소 글자를 입력하세요', false);
+    when = [{url: $('rUrl').value.trim()}];
+  } else return msg($('rMsg'), '언제 실행할지 고르세요', false);
+  try {
+    const r = await api('/api/rule/add', {name: $('rName').value.trim(), when, steps, after});
+    $('ruleDlg').close(); if (rec) endRec(); toast(r.message); loadRules(); loadConfig();
+  } catch (e) { msg($('rMsg'), e.message, false); }
+};
+
+// ---- 규칙 목록 ----
+let rulesInfo = null;
+async function loadRules() {
+  try {
+    rulesInfo = await api('/api/rules');
+    const ul = $('ruleList'); ul.replaceChildren();
+    if (!rulesInfo.rules.length) ul.append(el('li', 'hint', '아직 규칙이 없습니다. 화면 탭에서 ● 녹화로 만드세요.'));
+    rulesInfo.rules.forEach(r => {
+      const li = el('li'), del = el('button', '', '삭제');
+      del.style.float = 'right';
+      del.onclick = async () => {
+        if (!confirm(`'${r.name}' 규칙을 삭제할까요?`)) return;
+        try { const x = await api('/api/rule/delete', {name: r.name}); toast(x.message); loadRules(); loadConfig(); }
+        catch (e) { msg($('ruleMsg'), e.message, false); }
+      };
+      li.append(del, el('div', 'rname', r.name + (r.after === 'stop' ? '  (업무 종료)' : '')),
+        el('div', 'hint', '언제: ' + r.when.join(' 그리고 ')), el('div', 'rsteps', '할 일: ' + r.steps.join(' → ')));
+      ul.append(li);
+    });
+    // 현황 탭 안내 카드: 연습 사이트이거나 규칙이 없으면 표시
+    const show = rulesInfo.demo || !rulesInfo.rules.length;
+    $('setupCard').style.display = show ? 'block' : 'none';
+    $('setupHint').textContent = rulesInfo.demo
+      ? '지금은 연습용 결재함입니다. 실제 업무 사이트 주소를 넣으면 연습용 규칙은 지워집니다.'
+      : `업무 사이트: ${rulesInfo.url} · 아직 규칙이 없습니다. 아래 순서대로 만드세요.`;
+    if (!rulesInfo.demo && !$('setupUrl').value) $('setupUrl').value = rulesInfo.url;
+  } catch (e) { msg($('ruleMsg'), e.message, false); }
+}
+loadRules();
 
 loadConfig().catch(e => msg($('yamlMsg'), e.message, false));
 let saved = 'status'; try { saved = localStorage.getItem('wm_tab') || 'status'; } catch (_) {}

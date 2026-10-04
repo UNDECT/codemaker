@@ -235,8 +235,9 @@ def parse(data: dict, base_dir: Path | None = None) -> Config:
     _check_run_cycles(patterns)
 
     raw_rules = data.get("rules") or []
-    if not isinstance(raw_rules, list) or not raw_rules:
-        raise ConfigError("rules 가 최소 1개 필요합니다")
+    if not isinstance(raw_rules, list):
+        raise ConfigError("rules 는 목록이어야 합니다")
+    # 규칙 0개는 허용(사이트만 정해 둔 상태). 실행은 시작 단계에서 막는다.
     rules = []
     for i, r in enumerate(raw_rules):
         where = f"규칙 {i + 1}({r.get('name', '?') if isinstance(r, dict) else '?'})"

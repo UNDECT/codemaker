@@ -27,6 +27,8 @@ class Driver:
     def scroll(self, dx: int, dy: int): raise NotImplementedError
     def goto(self, url: str): raise NotImplementedError
     def reload(self): raise NotImplementedError
+    def back(self): raise NotImplementedError
+    def forward(self): raise NotImplementedError
     def save_session(self): ...
 
 
@@ -145,3 +147,9 @@ class PlaywrightDriver(Driver):
 
     def reload(self):
         self.page.reload(wait_until="domcontentloaded")
+
+    def back(self):
+        self.page.go_back(wait_until="domcontentloaded")
+
+    def forward(self):
+        self.page.go_forward(wait_until="domcontentloaded")

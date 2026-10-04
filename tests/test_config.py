@@ -29,7 +29,7 @@ def test_inline_steps_become_pattern():
 
 
 @pytest.mark.parametrize("over,msg", [
-    ({"rules": []}, "rules"),
+    ({"rules": "x"}, "목록"),
     ({"rules": [{"when": [{"text": "a", "url": "b"}], "then": "p"}]}, "하나만"),
     ({"rules": [{"when": [{"color": "#12"}], "then": "p"}]}, "색상"),
     ({"rules": [{"when": [{"text": "a"}], "then": "없음"}]}, "patterns에 없"),

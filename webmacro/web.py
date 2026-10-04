@@ -21,7 +21,7 @@ from collections import deque
 from concurrent.futures import Future
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
@@ -243,10 +243,11 @@ class Controller:
         self.driver = self._driver_key = None
 
     # --- 패널 기능 ---
-    def screenshot_png(self) -> bytes:
+    def screenshot_png(self) -> tuple[bytes, str]:
+        """(PNG, 현재 주소)"""
         def fn():
             d = self._ensure_driver()
-            return d.page.screenshot(type="png")
+            return d.page.screenshot(type="png"), d.url()
         return self.call(fn)
 
     def current_url(self) -> str:
@@ -273,6 +274,10 @@ class Controller:
                 d.goto(str(a["url"]).strip())
             elif act == "reload":
                 d.reload()
+            elif act == "back":
+                d.back()
+            elif act == "forward":
+                d.forward()
             elif act == "home":
                 d.goto(self.load().url)
             elif act == "save_session":
@@ -329,7 +334,8 @@ class Controller:
     def start(self, dry_run: bool = False):
         if self.running:
             raise Busy("이미 실행 중입니다")
-        self.load()  # 설정 오류면 여기서 ConfigError
+        if not self.load().rules:  # 설정 오류면 여기서 ConfigError
+            raise config_mod.ConfigError("규칙이 없습니다. '화면' 탭에서 녹화하거나 '설정' 탭에서 규칙을 먼저 만드세요.")
         self._stop.clear()
         self.last_result = ""
         self.running, self.dry_run = True, dry_run
@@ -364,8 +370,14 @@ class Controller:
                         self.notifier.send(f"사이트 접속 실패({attempt}회): {msg}")
                     self.status = f"접속 재시도 중({attempt}회)"
                     self._sleep(min(300, 10 * 2 ** min(attempt, 5)))
-            self.status = "실행 중" + (" (dry-run)" if dry_run else "")
             d = self.driver
+            # 화면 탭에서 다른 곳을 둘러봤더라도, 매크로는 항상 업무 사이트에서 시작한다
+            try:
+                if d.url().rstrip("/") != cfg.url.rstrip("/"):
+                    d.goto(cfg.url)
+            except Exception as e:
+                log.error("업무 사이트로 이동 실패: %s", e)
+            self.status = "실행 중" + (" (dry-run)" if dry_run else "")
 
             def restart():
                 d.close()
@@ -404,6 +416,130 @@ class Controller:
             self.state_file.write_text(json.dumps(kw), encoding="utf-8")
         except OSError as e:
             log.error("상태 저장 실패: %s", e)
+
+    # --- 규칙 편집 (휴대폰에서 YAML을 직접 고치지 않도록) ---
+    def edit_config(self, change) -> "config_mod.Config":
+        """설정을 dict로 읽어 change(data)로 고친 뒤 검사·저장. (주석은 사라질 수 있음)"""
+        data = yaml.safe_load(self.read_text()) or {}
+        change(data)
+        text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False, default_flow_style=None, width=120)
+        return self.save_text(text)
+
+    def rules_summary(self) -> dict:
+        cfg = self.load()
+        out = []
+        for r in cfg.rules:
+            conds = []
+            for c in r.when:
+                if c.kind == "color":
+                    conds.append(("없을 때 " if c.absent else "") + "색 #%02X%02X%02X" % tuple(c.value))
+                else:
+                    label = {"text": "글자", "ocr": "화면 글자", "selector": "요소", "url": "주소"}[c.kind]
+                    conds.append(f"{'없을 때 ' if c.absent else ''}{label} '{c.value}'")
+            steps = cfg.patterns.get(r.then, [])
+            out.append({"name": r.name, "when": conds or ["(항상)"], "pattern": r.then,
+                        "steps": [_step_label(st) for st in steps], "after": r.after})
+        return {"url": cfg.url, "demo": _is_demo(cfg.url), "rules": out}
+
+    def add_rule(self, body: dict):
+        name = str(body.get("name") or "").strip()
+        if not name:
+            raise ValueError("규칙 이름을 입력하세요")
+        steps = body.get("steps") or []
+        when = body.get("when") or []
+        after = body.get("after") or "continue"
+        if after == "stop" and not steps:
+            steps = [{"do": "screenshot", "name": "done"}]   # 종료 조건: 마지막 화면만 남기고 멈춤
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("녹화된 단계가 없습니다")
+        if not isinstance(when, list) or not when:
+            raise ValueError("언제 실행할지(조건)를 정하세요")
+        self._check_color_conditions(when)
+
+        def change(data):
+            patterns = data.setdefault("patterns", {}) or {}
+            data["patterns"] = patterns
+            rules = data.setdefault("rules", []) or []
+            data["rules"] = rules
+            if any(isinstance(r, dict) and r.get("name") == name for r in rules):
+                raise ValueError(f"같은 이름의 규칙이 이미 있습니다: {name}")
+            pname = name
+            n = 2
+            while pname in patterns:
+                pname = f"{name}_{n}"
+                n += 1
+            patterns[pname] = steps
+            rule = {"name": name, "when": when, "then": pname}
+            if after != "continue":
+                rule["after"] = after
+            # '업무 종료'(stop) 규칙은 먼저 검사되도록 맨 앞, 나머지는 뒤에 붙인다
+            if after == "stop":
+                rules.insert(0, rule)
+            else:
+                rules.append(rule)
+        return self.edit_config(change)
+
+    def _check_color_conditions(self, when: list):
+        """색 조건이 화면 대부분(배경색)을 덮으면 거절 — 실수로 배경을 고르면 매크로가 아무 데나 계속 누른다."""
+        colors = [c for c in when if isinstance(c, dict) and "color" in c and not c.get("absent")]
+        if not colors:
+            return
+        from .color import color_mask, parse_color
+
+        def fn():
+            return self._ensure_driver().screenshot()
+        try:
+            img = self.call(fn, timeout=30)
+        except Exception:
+            return  # 화면을 못 가져오면 검사 생략 (저장은 허용)
+        for c in colors:
+            region = c.get("region")
+            part = img if not region else img[region[1]:region[3], region[0]:region[2]]
+            if part.size == 0:
+                continue
+            frac = float(color_mask(part, parse_color(c["color"]), int(c.get("tolerance", 10))).mean())
+            if frac > 0.25:
+                raise ValueError(f"고른 색 {c['color']} 이(가) 화면의 {frac:.0%}를 차지합니다 — 배경색으로 보입니다. "
+                                 "'선택' 모드에서 버튼 위를 정확히 눌러 다시 고르세요 (확대하면 쉽습니다).")
+
+    def delete_rule(self, name: str):
+        def change(data):
+            rules = data.get("rules") or []
+            target = next((r for r in rules if isinstance(r, dict) and r.get("name") == name), None)
+            if target is None:
+                raise ValueError(f"없는 규칙: {name}")
+            rules.remove(target)
+            then = target.get("then")
+            still_used = any(isinstance(r, dict) and r.get("then") == then for r in rules)
+            pats = data.get("patterns") or {}
+            used_by_run = any(isinstance(st, dict) and st.get("do") == "run" and st.get("pattern") == then
+                              for steps in pats.values() for st in (steps or []))
+            if isinstance(then, str) and not still_used and not used_by_run:
+                pats.pop(then, None)
+        return self.edit_config(change)
+
+    def set_site(self, url: str, width=None, height=None, interval=None) -> str:
+        """업무 사이트 주소 설정. 연습 사이트에서 바뀌면 연습용 규칙은 지운다(실제 사이트를 잘못 누르지 않게)."""
+        text = self.read_text()
+        try:
+            old_url = (yaml.safe_load(text) or {}).get("url", "")
+        except yaml.YAMLError:
+            old_url = ""
+        text = set_top_level(text, "url", url)
+        if width and height:
+            text = set_top_level(text, "viewport", {"width": int(width), "height": int(height)})
+        if interval:
+            text = set_top_level(text, "interval", float(interval))
+        cleared = False
+        if _is_demo(str(old_url)) and not _is_demo(url):
+            data = yaml.safe_load(text) or {}
+            if data.get("rules") or data.get("patterns"):
+                data["patterns"], data["rules"] = {}, []
+                text = "# 업무 사이트 설정 (연습용 규칙은 지움)\n" + yaml.safe_dump(
+                    data, allow_unicode=True, sort_keys=False, default_flow_style=None, width=120)
+                cleared = True
+        self.save_text(text)
+        return "사이트 설정 저장됨" + (" · 연습용 규칙은 지웠습니다" if cleared else "")
 
     def list_shots(self, n: int = 40) -> list[dict]:
         try:
@@ -543,7 +679,10 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                         info = {"error": str(e)}
                     self._json({"yaml": text, "settings": info, "path": str(ctl.config_path)})
                 elif path == "/api/screenshot":
-                    self._send(200, ctl.screenshot_png(), "image/png")
+                    png, page_url = ctl.screenshot_png()
+                    self._send(200, png, "image/png", {"X-Page-Url": quote(page_url, safe=":/?&=#%+,;@~")})
+                elif path == "/api/rules":
+                    self._json(ctl.rules_summary())
                 elif path == "/api/shots":
                     self._json({"shots": ctl.list_shots()})
                 elif path.startswith("/shots/"):
@@ -584,19 +723,19 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                     cfg = ctl.save_text(body["yaml"])
                     self._json({"ok": True, "message": _summary(cfg) + _restart_note(ctl)})
                 elif path == "/api/settings":
-                    text = ctl.read_text()
                     url = str(body.get("url", "")).strip()
                     ok = config_mod.is_web_url(url) or (ctl.allow_file and url.startswith("file://"))
                     if not ok:
                         raise config_mod.ConfigError("주소는 http:// 또는 https:// 로 시작해야 합니다")
-                    text = set_top_level(text, "url", url)
-                    if body.get("width") and body.get("height"):
-                        text = set_top_level(text, "viewport",
-                                             {"width": int(body["width"]), "height": int(body["height"])})
-                    if body.get("interval"):
-                        text = set_top_level(text, "interval", float(body["interval"]))
-                    ctl.save_text(text)
-                    self._json({"ok": True, "yaml": text, "message": "사이트 설정 저장됨" + _restart_note(ctl)})
+                    message = ctl.set_site(url, body.get("width"), body.get("height"), body.get("interval"))
+                    self._json({"ok": True, "yaml": ctl.read_text(), "message": message + _restart_note(ctl)})
+                elif path == "/api/rule/add":
+                    cfg = ctl.add_rule(body)
+                    self._json({"ok": True, "message": f"규칙 '{body.get('name')}' 저장됨 (규칙 {len(cfg.rules)}개)"
+                                + _restart_note(ctl)})
+                elif path == "/api/rule/delete":
+                    ctl.delete_rule(str(body.get("name", "")))
+                    self._json({"ok": True, "message": "삭제됨" + _restart_note(ctl)})
                 elif path == "/api/browser":
                     url = ctl.browser_action(body)
                     self._json({"ok": True, "url": url})
@@ -652,6 +791,36 @@ def _icon(size: int) -> bytes:
         im.save(buf, "PNG")
         _ICONS[size] = buf.getvalue()
     return _ICONS[size]
+
+
+def _is_demo(url: str) -> bool:
+    u = urlparse(url)
+    return u.hostname in ("127.0.0.1", "localhost") and u.path.rstrip("/") == "/demo"
+
+
+STEP_KO = {"click_match": "찾은 색 클릭", "click": "클릭", "click_selector": "요소 클릭", "click_text": "글자 클릭",
+           "type": "입력", "press": "키", "wait": "대기", "wait_color": "색 기다림", "wait_text": "글자 기다림",
+           "read": "글자 읽기", "wait_ocr": "화면 글자 기다림", "scroll": "스크롤", "goto": "이동",
+           "reload": "새로고침", "screenshot": "화면 저장", "notify": "알림", "run": "패턴 실행", "stop": "종료"}
+
+
+def _step_label(st: dict) -> str:
+    act = st.get("do")
+    k = STEP_KO.get(act, act)
+    if act == "click":
+        return f"{k} ({st.get('x')}, {st.get('y')})"
+    if act in ("type", "click_text", "wait_text"):
+        t = str(st.get("text", ""))
+        return f"{k} '{'(비공개)' if '{env:' in t else t[:30]}'"
+    if act == "press":
+        return f"{k} {st.get('key')}"
+    if act == "wait":
+        return f"{k} {st.get('sec')}초"
+    if act == "goto":
+        return f"{k} {str(st.get('url'))[:40]}"
+    if act == "scroll":
+        return f"{k} {'아래' if int(st.get('dy', 0)) > 0 else '위'}"
+    return k
 
 
 def _region_arg(region) -> tuple[int, int, int, int]:

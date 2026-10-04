@@ -324,3 +324,59 @@ def test_first_run_demo(tmp_path):
     finally:
         httpd.shutdown()
         ctl.shutdown()
+
+
+def test_switch_from_demo_to_real_site_and_build_rule(tmp_path):
+    """연습 사이트 → 업무 사이트로 바꾸면 연습 규칙이 지워지고, 규칙 없이는 시작 불가,
+    녹화한 단계로 규칙을 만들면 실제로 처리된다."""
+    pytest.importorskip("playwright.sync_api")
+    probe = ThreadingHTTPServer(("127.0.0.1", 0), lambda *a: None)
+    port = probe.server_address[1]
+    probe.server_close()
+    ctl = Controller(tmp_path / "data" / "config.yaml", MemoryNotifier(), allow_file=True, demo_port=port)
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(ctl, LogBuffer(), "pw"))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{port}"
+    site = tmp_path / "work.html"
+    site.write_text(SITE, encoding="utf-8")
+    try:
+        assert req(base, "/api/rules")[1]["demo"] is True
+        code, r = req(base, "/api/settings", {"url": site.as_uri(), "width": 800, "height": 600, "interval": 0.2})
+        assert code == 200 and "연습용 규칙은 지웠습니다" in r["message"]
+        info = req(base, "/api/rules")[1]
+        assert info["demo"] is False and info["rules"] == []
+        code, r = req(base, "/api/start", {})
+        assert code == 400 and "규칙이 없습니다" in r["error"]
+
+        # 주소창: 이동·뒤로·앞으로, 화면 응답에 현재 주소
+        assert req(base, "/api/browser", {"action": "goto", "url": f"{base}/demo"})[0] == 200
+        assert req(base, "/api/browser", {"action": "back"})[1]["url"].endswith("work.html")
+        assert req(base, "/api/browser", {"action": "forward"})[1]["url"].endswith("/demo")
+        _, headers, _ = raw(base, "/api/screenshot", headers={"Authorization": "Basic " + base64.b64encode(b"u:pw").decode()})
+        assert headers["X-Page-Url"].endswith("/demo")
+
+        # 녹화로 만든 규칙 저장 (빨간 버튼이 보이면 → 찾은 색 클릭)
+        bad = {"name": "x", "when": [{"color": "#E53935"}], "steps": []}
+        assert req(base, "/api/rule/add", bad)[0] == 400
+        rule = {"name": "빨간 버튼 처리", "when": [{"color": "#E53935", "tolerance": 15, "min_pixels": 30}],
+                "steps": [{"do": "click_match"}, {"do": "wait", "sec": 0.5}], "after": "continue"}
+        code, r = req(base, "/api/rule/add", rule)
+        assert code == 200, r
+        assert req(base, "/api/rule/add", rule)[0] == 400                      # 같은 이름 거절
+        end = {"name": "끝", "when": [{"text": "처리할 항목이 없습니다"}], "steps": [{"do": "wait", "sec": 0.1}],
+               "after": "stop"}
+        assert req(base, "/api/rule/add", end)[0] == 200
+        info = req(base, "/api/rules")[1]
+        assert [x["name"] for x in info["rules"]] == ["끝", "빨간 버튼 처리"]    # 종료 규칙이 먼저
+        assert info["rules"][1]["steps"] == ["찾은 색 클릭", "대기 0.5초"]
+
+        assert req(base, "/api/start", {})[0] == 200
+        wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료", timeout=60)
+        assert req(base, "/api/state")[1]["monitor"]["today"]["rules"] == {"빨간 버튼 처리": 1, "끝": 1}
+
+        assert req(base, "/api/rule/delete", {"name": "빨간 버튼 처리"})[0] == 200
+        assert [x["name"] for x in req(base, "/api/rules")[1]["rules"]] == ["끝"]
+        assert "빨간 버튼 처리" not in (tmp_path / "data" / "config.yaml").read_text(encoding="utf-8")
+    finally:
+        httpd.shutdown()
+        ctl.shutdown()
