@@ -6,6 +6,8 @@ cd /d "%~dp0"
 rem 윈도우에서 처음 써보기: 이 파일을 더블클릭하세요.
 rem 처음 한 번은 설치 때문에 몇 분 걸립니다. 다음부터는 바로 열립니다.
 
+rem 실행 환경(.venv)이 이미 있으면 파이썬 확인은 건너뛴다
+if exist ".venv\Scripts\python.exe" goto :haspy
 where python >nul 2>nul
 if errorlevel 1 (
   echo [!] 파이썬이 없습니다.
@@ -20,7 +22,10 @@ if not exist ".venv\Scripts\python.exe" (
   echo [1/3] 실행 환경 만드는 중...
   python -m venv .venv || goto :fail
 )
+:haspy
 set "PY=.venv\Scripts\python.exe"
+rem 설치 스크립트가 받아 둔 한국어 글자 데이터
+if exist "%~dp0tessdata\kor.traineddata" set "TESSDATA_PREFIX=%~dp0tessdata"
 
 if not exist ".venv\installed.txt" (
   echo [2/3] 필요한 프로그램 설치 중... ^(몇 분 걸립니다^)

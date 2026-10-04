@@ -4,7 +4,19 @@
 집 PC에서 매크로를 돌리고, 휴대폰은 Tailscale(무료)로 어디서든 그 PC의 관리 화면에 접속합니다.
 **집 PC는 켜 두어야 합니다** (꺼지면 매크로도 멈춤).
 
-## A. 집 PC 설치 (처음 한 번, 15분)
+## 빠른 설치 (한 줄)
+
+1. 시작 버튼 → **PowerShell** 검색 → 열기
+2. 아래 한 줄 붙여넣고 Enter (관리자 확인 창이 뜨면 **예**):
+   ```
+   irm https://raw.githubusercontent.com/UNDECT/codemaker/ccr-287c0b4e-v2ibub/scripts/setup-windows.ps1 | iex
+   ```
+   파이썬·글자 인식(한국어)·Tailscale·매크로 프로그램 설치, 바탕화면 바로가기, 켤 때 자동 실행, 절전 끄기까지 합니다.
+3. 끝나면 **Tailscale 로그인**(아래 B-1)과 **비밀번호 메모**만 하면 됩니다. 다시 실행하면 업데이트(만든 매크로는 유지).
+
+한 줄 설치가 안 되면 아래 A를 따라 직접 설치하세요.
+
+## A. 집 PC 설치 (직접, 15분)
 
 1. **파이썬 설치** — https://www.python.org/downloads/ → 노란 Download 버튼 → 받은 파일 실행
    → 첫 화면 아래 **"Add python.exe to PATH" 체크** → Install Now
