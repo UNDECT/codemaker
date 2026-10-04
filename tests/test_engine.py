@@ -262,6 +262,10 @@ def test_progress_events(monkeypatch):
     eng.on_event = lambda kind, **i: seen.append((kind, i))
     eng.tick()
     drv.img[0:20, 0:20] = (255, 0, 0)
+
+    def handled(x, y):
+        drv.img[:] = 255
+    drv.on_click = handled
     eng.tick()
     kinds = [k for k, _ in seen]
     assert kinds == ["idle", "rule", "step", "step", "step", "step", "done", "stop"]
@@ -275,3 +279,88 @@ def test_broken_event_callback_does_not_stop_macro():
     eng.on_event = lambda kind, **i: 1 / 0
     drv.texts.add("없습니다")
     assert eng.tick() == "stop"
+
+
+def test_waits_for_screen_change_before_next_check():
+    """느린 사이트: 클릭 후 0.6초 뒤에야 버튼이 사라진다 → 같은 버튼을 두 번 누르면 안 된다."""
+    data = {"patterns": {"p": [{"do": "click_match"}]},
+            "rules": [{"name": "빨강", "when": [{"color": "#FF0000", "min_pixels": 10}], "then": "p"}]}
+    eng, drv, _, clk = engine(data)
+    drv.img[20:40, 100:140] = (255, 0, 0)
+    pending = {}
+
+    def slow(x, y):
+        pending["at"] = clk.t + 0.6
+    drv.on_click = slow
+    orig = drv.screenshot
+
+    def shot():
+        if "at" in pending and clk.t >= pending["at"]:
+            drv.img[:] = 255
+        return orig()
+    drv.screenshot = shot
+    eng.run(max_ticks=5)
+    assert drv.clicks() == [(120, 30)]          # 한 번만 클릭
+    assert eng.last_changed
+
+
+def test_no_change_after_action_is_reported_and_not_rushed():
+    seen = []
+    data = {"settle_timeout": 2, "max_same_rule": 100,
+            "patterns": {"p": [{"do": "click", "x": 1, "y": 1}]},
+            "rules": [{"name": "x", "when": [{"text": "go"}], "then": "p"}]}
+    eng, drv, _, clk = engine(data)
+    eng.on_event = lambda k, **i: seen.append(k)
+    drv.texts.add("go")
+    eng.run(max_ticks=3)
+    assert seen.count("nochange") == 3
+    assert clk.t >= 3 * (2 + 2.0)     # 변화 대기 2초 + 확인 주기 2초씩 (몰아서 누르지 않음)
+
+
+def test_settle_disabled_and_skipped_for_stop_rules():
+    data = {"settle_timeout": 0, "patterns": {"p": [{"do": "click", "x": 1, "y": 1}]},
+            "rules": [{"when": [{"text": "go"}], "then": "p"}]}
+    eng, drv, _, clk = engine(data)
+    drv.texts.add("go")
+    eng.tick()
+    assert clk.t == 0
+    data2 = {"patterns": {"p": [{"do": "click", "x": 1, "y": 1}]},
+             "rules": [{"when": [{"text": "go"}], "then": "p", "after": "stop"}]}
+    eng2, drv2, _, clk2 = engine(data2)
+    drv2.texts.add("go")
+    assert eng2.tick() == "stop" and clk2.t == 0
+
+
+def test_planned_browser_restart_only_when_idle():
+    data = {"restart_browser_hours": 1, "interval": 600,
+            "patterns": {"p": [{"do": "click", "x": 1, "y": 1}]},
+            "rules": [{"when": [{"text": "never"}], "then": "p"}]}
+    eng, drv, _, clk = engine(data)
+    restarts = []
+    eng.run(max_ticks=13, restart_driver=lambda: restarts.append(clk.t))
+    assert len(restarts) == 2        # 600초 x 13 ≈ 2.1시간 → 두 번
+
+
+def test_prune_shots(tmp_path):
+    import os
+    import time as _t
+
+    from webmacro.engine import prune_shots
+    for i in range(10):
+        f = tmp_path / f"{i:02d}.png"
+        f.write_bytes(b"x")
+        os.utime(f, (_t.time() - i * 3600, _t.time() - i * 3600))
+    old = tmp_path / "old.png"
+    old.write_bytes(b"x")
+    os.utime(old, (_t.time() - 9 * 86400,) * 2)
+    prune_shots(tmp_path, keep=5, days=7)
+    assert sorted(p.name for p in tmp_path.glob("*.png")) == ["00.png", "01.png", "02.png", "03.png", "04.png"]
+
+
+def test_goto_file_blocked_when_not_allowed():
+    data = {"patterns": {"p": [{"do": "goto", "url": "file:///etc/passwd"}]},
+            "rules": [{"when": [{"text": "go"}], "then": "p"}]}
+    eng, drv, n, _ = engine(data)
+    eng.allow_file = False
+    drv.texts.add("go")
+    assert eng.tick() == "error" and any("http/https" in m for m in n.messages)

@@ -17,7 +17,7 @@ import re
 
 from . import ocr
 from .color import find_blobs, pick_blob
-from .config import Config, Condition, Rule, expand_env
+from .config import Config, Condition, Rule, expand_env, is_web_url
 from .driver import Driver
 from .notify import Notifier
 
@@ -42,8 +42,9 @@ class _Stop(Exception):
 class Engine:
     def __init__(self, cfg: Config, driver: Driver, notifier: Notifier | None = None,
                  dry_run: bool = False, out_dir: Path | None = None,
-                 clock=time.monotonic, sleep=time.sleep, on_event=None):
+                 clock=time.monotonic, sleep=time.sleep, on_event=None, allow_file: bool = True):
         self.cfg = cfg
+        self.allow_file = allow_file  # 관리 화면(서버)에서는 False: file:// 이동 금지
         self.on_event = on_event  # 진행 상황을 관리 화면에 알리는 콜백 (kind, **정보)
         self.driver = driver
         self.notifier = notifier or Notifier()
@@ -63,6 +64,10 @@ class Engine:
         self._ocr_cache: dict = {}
         self._ocr_warned = False
         self.history: list[str] = []  # 실행한 규칙 이름 (테스트·로그용)
+        self.last_changed = True      # 마지막 동작 후 화면이 바뀌었는지
+        self._acted = False           # 이번 규칙에서 클릭·입력을 했는지
+        self._driver_started = clock()
+        self._last_prune = None
 
     def emit(self, kind: str, **info):
         if self.on_event:
@@ -173,6 +178,7 @@ class Engine:
                 continue
             if act in COUNTED:
                 self._count_action()
+                self._acted = True
             try:
                 self._do(step, matches, depth)
             except (_Stop, _Pause):
@@ -248,7 +254,10 @@ class Engine:
         elif act == "scroll":
             d.scroll(int(s.get("dx", 0)), int(s["dy"]))
         elif act == "goto":
-            d.goto(self.fill(str(s["url"])))
+            url = self.fill(str(s["url"]))
+            if not self.allow_file and not is_web_url(url):
+                raise StepFailed(f"http/https 주소만 이동할 수 있습니다: {url}")
+            d.goto(url)
         elif act == "reload":
             d.reload()
         elif act == "screenshot":
@@ -308,13 +317,62 @@ class Engine:
         return str(keys) if keys else ""
 
     def _shot(self, name: str) -> Path | None:
-        path = self.out_dir / f"{datetime.now():%Y%m%d-%H%M%S}-{name}.png"
+        now = datetime.now()
+        path = self.out_dir / f"{now:%Y%m%d-%H%M%S}-{now.microsecond // 1000:03d}-{name}.png"
         try:
             self.driver.save_png(path)
-            return path
         except Exception as e:
             log.error("스크린샷 저장 실패: %s", e)
             return None
+        if self._last_prune is None or self.clock() - self._last_prune > 60:
+            self._last_prune = self.clock()
+            prune_shots(self.out_dir, self.cfg.keep_shots, self.cfg.keep_days)
+        return path
+
+    # ---------- 동작 후 대기: 같은 건 두 번 처리 방지 ----------
+    def _settle(self, rule: Rule, matches: dict, vars_before: dict) -> bool:
+        """동작 뒤, 방금 규칙을 일으킨 상황이 사라지거나 바뀔 때까지 기다린다.
+
+        사이트가 느리면 클릭한 버튼이 한동안 그대로 남는다. 바로 다시 확인하면 같은 건을 또 처리한다.
+        '바뀜' = 규칙 조건이 더는 안 맞음 / 색 위치가 달라짐 / OCR로 읽은 값이 달라짐(다음 건).
+        바뀐 뒤에는 화면이 멈출 때까지(로딩·애니메이션) 잠깐 더 기다린다.
+        반환: 바뀌었는지 (시간 안에 안 바뀌면 False).
+        """
+        timeout = self.cfg.settle_timeout
+        if timeout <= 0:
+            return True
+        end = self.clock() + timeout
+        while self.clock() < end:
+            self.sleep(0.25)
+            img = self.driver.screenshot()
+            if self._situation_changed(rule, matches, vars_before, img):
+                self._wait_still(img, min(1.5, max(0.0, end - self.clock())))
+                return True
+        log.warning("'%s' 실행 후 %g초 동안 상황이 그대로", rule.name, timeout)
+        return False
+
+    def _situation_changed(self, rule: Rule, matches: dict, vars_before: dict, img) -> bool:
+        self._ocr_cache = {}
+        self._pending_vars = {}
+        now: dict = {}
+        if not all(self._check(c, img, now) for c in rule.when):
+            return True
+        for k, (x, y) in matches.items():
+            p = now.get(k)
+            if p is None or abs(p[0] - x) > 8 or abs(p[1] - y) > 8:
+                return True
+        return any(self._pending_vars.get(k) != v for k, v in vars_before.items())
+
+    def _wait_still(self, img, limit: float):
+        """화면이 두 번 연속 같을 때까지 (최대 limit초)."""
+        prev = _small(img)
+        end = self.clock() + limit
+        while self.clock() < end:
+            self.sleep(0.2)
+            cur = _small(self.driver.screenshot())
+            if not _differs(prev, cur):
+                return
+            prev = cur
 
     # ---------- 한 번 확인 ----------
     def tick(self) -> str:
@@ -343,6 +401,9 @@ class Engine:
         self._last_fired[rule.name] = self.clock()
         self.history.append(rule.name)
         self.emit("rule", rule=rule.name, pattern=_label(rule.then))
+        self._acted = False
+        trigger_vars = dict(self.vars)        # 조건에서 읽은 값 (다음 건이면 달라진다)
+        trigger_pos = dict(matches)           # 조건에서 찾은 색 위치 (패턴 중 wait_color로 늘어나기 전)
         try:
             self.run_pattern(rule.then, matches)
         except _Stop as e:
@@ -372,6 +433,11 @@ class Engine:
             return "error"
         self._errors = 0
         self._fail_streak = 0
+        # 클릭·입력을 했고 계속 감시할 때만: 화면이 바뀌어 안정될 때까지 기다린다
+        need = self._acted and not self.dry_run and rule.after != "stop"
+        self.last_changed = self._settle(rule, trigger_pos, trigger_vars) if need else True
+        if not self.last_changed:
+            self.emit("nochange", rule=rule.name, sec=self.cfg.settle_timeout)
         self.emit("done", rule=rule.name)
         if rule.after == "stop":
             self.emit("stop", reason=rule.name)
@@ -414,6 +480,7 @@ class Engine:
                 self.sleep(min(300, 5 * 2 ** min(crashes, 6)))
                 try:
                     restart_driver()
+                    self._driver_started = self.clock()
                 except Exception:
                     log.exception("브라우저 재시작 실패")
                 continue
@@ -431,10 +498,23 @@ class Engine:
                 continue
             if self.clock() - self._last_session_save > SESSION_SAVE_SEC:
                 self._save_session()
-            if result.startswith("ran:"):
-                continue  # 실행 직후엔 바로 다시 확인
+            if result.startswith("ran:") and self.last_changed:
+                continue  # 화면이 바뀌었으면 바로 다음 확인
+            if result == "idle" and restart_driver and self._due_restart():
+                log.info("브라우저 정기 재시작 (%g시간마다)", self.cfg.restart_browser_hours)
+                self.emit("restart")
+                self._save_session()
+                try:
+                    restart_driver()
+                except Exception:
+                    log.exception("브라우저 재시작 실패")
+                self._driver_started = self.clock()
             self.sleep(self.cfg.interval)
         return "max_ticks"
+
+    def _due_restart(self) -> bool:
+        h = self.cfg.restart_browser_hours
+        return h > 0 and self.clock() - self._driver_started >= h * 3600
 
     def _save_session(self):
         self._last_session_save = self.clock()
@@ -446,6 +526,35 @@ class Engine:
 
 class _Pause(Exception):
     pass
+
+
+def _small(img):
+    """비교용 축소 흑백 화면."""
+    import numpy as np
+    return np.asarray(img[::4, ::4, :3], dtype=np.int16).sum(axis=2)
+
+
+def _differs(a, b) -> bool:
+    import numpy as np
+    if a.shape != b.shape:
+        return True
+    changed = np.abs(a - b) > 48           # 채널 합 기준, 미세한 깜빡임은 무시
+    return int(changed.sum()) >= max(3, changed.size // 5000)
+
+
+def prune_shots(out_dir: Path, keep: int, days: float):
+    """오래되거나 너무 많은 저장 화면을 지운다 (디스크 가득 참 방지)."""
+    try:
+        files = sorted(out_dir.glob("*.png"), key=lambda f: f.stat().st_mtime, reverse=True)
+    except OSError:
+        return
+    cutoff = time.time() - days * 86400
+    for i, f in enumerate(files):
+        try:
+            if i >= keep or f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            pass
 
 
 def _label(pattern: str) -> str:

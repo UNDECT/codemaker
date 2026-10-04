@@ -578,7 +578,11 @@ $('insRegion').onclick = () => insertLine(`region: [${region.join(', ')}]`);
 let lastOcr = '';
 $('btnOcr').onclick = async () => {
   const out = $('ocrOut'); out.style.display = 'block'; out.textContent = '읽는 중…';
-  try { const r = await api('/api/ocr', {region}); lastOcr = r.text; out.textContent = '읽은 글자: ' + (r.text || '(없음)'); showCuts(r.cuts); }
+  try {
+    const r = await api('/api/ocr', {region}); lastOcr = r.text;
+    out.textContent = '읽은 글자: ' + (r.text || '(없음)') + (r.text_eng ? '\n영어 모드: ' + r.text_eng + '  ← 영문·숫자 코드는 실제 실행 때 이쪽으로 다시 읽습니다' : '');
+    showCuts(r.cuts);
+  }
   catch (e) { out.textContent = e.message; }
 };
 function ocrGuess() { return (lastOcr.split('\n')[0] || '찾을 글자').replace(/"/g, ''); }

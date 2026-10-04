@@ -94,3 +94,42 @@ def test_type_into_selector_and_url_condition(driver_factory, tmp_path, monkeypa
     eng = Engine(cfg, d, MemoryNotifier(), out_dir=tmp_path)
     assert eng.tick() == "stop"
     assert d.page.input_value("#memo") == "비밀값"
+
+
+SLOW = """<!doctype html><meta charset=utf-8><body style="margin:0">
+<button id=b style="position:absolute;left:200px;top:100px;width:120px;height:40px;background:#E53935;border:0"></button>
+<p id=n style="position:absolute;left:10px;top:300px">0</p>
+<script>
+ let left = 3, clicks = 0, busy = false;
+ const b = document.getElementById('b');
+ b.onclick = () => {
+   clicks++; document.getElementById('n').textContent = clicks;
+   if (busy) return; busy = true;
+   setTimeout(() => {                       // 느린 사이트: 0.8초 뒤에야 버튼이 사라진다
+     b.style.display = 'none'; left--;
+     setTimeout(() => { busy = false;
+       if (left > 0) b.style.display = 'block';
+       else document.body.insertAdjacentHTML('beforeend', '<h1>처리할 항목이 없습니다</h1>');
+     }, 700);
+   }, 800);
+ };
+</script>"""
+
+
+def test_slow_site_each_item_clicked_once(driver_factory, tmp_path):
+    _, make = driver_factory
+    page = tmp_path / "slow.html"
+    page.write_text(SLOW, encoding="utf-8")
+    cfg = parse({
+        "url": page.as_uri(), "viewport": {"width": 800, "height": 400}, "interval": 0.2,
+        "patterns": {"p": [{"do": "click_match"}]},          # 일부러 wait 없이
+        "rules": [
+            {"name": "끝", "when": {"text": "처리할 항목이 없습니다"}, "then": [{"do": "stop"}]},
+            {"name": "빨강", "when": {"color": "#E53935"}, "then": "p"},
+        ],
+    }, base_dir=tmp_path)
+    d = make(cfg)
+    eng = Engine(cfg, d, MemoryNotifier(), out_dir=tmp_path / "out")
+    assert eng.run(max_ticks=60) == "stop"
+    assert d.page.inner_text("#n") == "3"                    # 항목 3개 → 정확히 3번 클릭
+    assert eng.history == ["빨강", "빨강", "빨강", "끝"]

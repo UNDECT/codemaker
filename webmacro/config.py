@@ -84,6 +84,10 @@ class Config:
     max_same_rule: int = 50    # 같은 규칙 연속 실행 한도 → 넘으면 pause
     pause_minutes: float = 30  # pause 시 대기 시간(분)
     recheck_minutes: float = 0 # 업무 종료(stop) 후 이 시간 뒤 새로고침해 다시 시작(0=프로그램 종료)
+    settle_timeout: float = 5  # 동작 후 화면이 바뀌고 안정될 때까지 최대 대기(초). 0=끔 → 같은 건 두 번 처리 방지
+    keep_shots: int = 500      # 저장 화면 최대 장수
+    keep_days: float = 7       # 저장 화면 보관 일수
+    restart_browser_hours: float = 24  # 쉬는 동안 브라우저를 이 시간마다 새로 띄움(메모리 누적 방지). 0=끔
     session_file: str | None = None
     headless: bool = True
     locale: str = "ko-KR"
@@ -269,6 +273,10 @@ def parse(data: dict, base_dir: Path | None = None) -> Config:
         max_same_rule=int(data.get("max_same_rule", 50)),
         pause_minutes=float(data.get("pause_minutes", 30)),
         recheck_minutes=float(data.get("recheck_minutes", 0)),
+        settle_timeout=float(data.get("settle_timeout", 5)),
+        keep_shots=int(data.get("keep_shots", 500)),
+        keep_days=float(data.get("keep_days", 7)),
+        restart_browser_hours=float(data.get("restart_browser_hours", 24)),
         session_file=data.get("session_file"),
         headless=bool(data.get("headless", True)),
         locale=str(data.get("locale", "ko-KR")),
@@ -303,6 +311,23 @@ def _check_targets(steps, targets, conds, where, patterns):
                 raise ConfigError(f"{where}: click_match target {t!r} 를 정의한 color 조건(as)이 없습니다")
         if s["do"] == "run":
             _check_targets(patterns[s["pattern"]], local, conds, where, patterns)
+
+
+def check_urls(cfg: Config, allow_file: bool):
+    """서버에서는 http/https 주소만 허용 (file:// 로 서버 안 파일을 화면에 띄우는 것 방지)."""
+    if allow_file:
+        return
+    bad = [cfg.url] if not is_web_url(cfg.url) else []
+    for name, steps in cfg.patterns.items():
+        for st in steps:
+            if st["do"] == "goto" and "{" not in str(st["url"]) and not is_web_url(str(st["url"])):
+                bad.append(str(st["url"]))
+    if bad:
+        raise ConfigError(f"http:// 또는 https:// 주소만 쓸 수 있습니다: {bad[0]}")
+
+
+def is_web_url(url: str) -> bool:
+    return bool(re.match(r"^https?://", url.strip(), re.I))
 
 
 def load(path: str | os.PathLike) -> Config:

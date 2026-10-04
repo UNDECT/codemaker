@@ -33,6 +33,7 @@ class Monitor:
         self.started_at = None
         self.last_error = None
         self.current_rule = None
+        self.dry_run = False
         self._seq = 0
         self.day = self._today()
         self.today = {"done": 0, "errors": 0, "checks": 0, "rules": {}}
@@ -92,6 +93,7 @@ class Monitor:
             self._roll_day()
             self.started_at = self.clock()
             self.current_rule = None
+            self.dry_run = dry_run
             self._set("시작함" + (" (시험 실행: 클릭 안 함)" if dry_run else ""))
             self._add("start", f"시작: {url}" + (" (시험 실행)" if dry_run else ""))
 
@@ -131,14 +133,23 @@ class Monitor:
             elif kind == "read":
                 self._add("read", f"읽음: {i['name']} = {i['value']}")
             elif kind == "done":
-                self.today["done"] += 1
-                r = self.today["rules"]
-                r[i["rule"]] = r.get(i["rule"], 0) + 1
-                self._set(f"'{i['rule']}' 완료")
-                self._add("done", f"'{i['rule']}' 완료", rule=i["rule"])
-                self._save()
+                if self.dry_run:  # 시험 실행은 실제로 누르지 않았으니 처리 건수에 넣지 않는다
+                    self._set(f"(시험) '{i['rule']}' 판단 완료")
+                    self._add("done", f"(시험) '{i['rule']}' — 실제 클릭 없음", rule=i["rule"])
+                else:
+                    self.today["done"] += 1
+                    r = self.today["rules"]
+                    r[i["rule"]] = r.get(i["rule"], 0) + 1
+                    self._set(f"'{i['rule']}' 완료")
+                    self._add("done", f"'{i['rule']}' 완료", rule=i["rule"])
+                    self._save()
+            elif kind == "nochange":
+                self._add("pause", f"'{i['rule']}' 실행 후 {i['sec']:g}초 동안 화면이 안 바뀜 (사이트가 느리거나 클릭이 안 먹었을 수 있음)")
+            elif kind == "restart":
+                self._add("wait", "브라우저 정기 재시작 (메모리 정리)")
             elif kind == "error":
-                self.today["errors"] += 1
+                if not self.dry_run:
+                    self.today["errors"] += 1
                 self.last_error = {"t": now, "text": i["message"], "shot": i.get("shot")}
                 self._set(f"실패: {i['message']}")
                 self._add("error", i["message"], rule=i.get("rule"), shot=i.get("shot"))

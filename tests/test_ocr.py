@@ -48,7 +48,7 @@ def fake_ocr(monkeypatch, screen: dict):
 
 def test_ocr_condition_captures_value_and_types_it(monkeypatch):
     calls = fake_ocr(monkeypatch, {(0, 0, 100, 30): "주문번호: PT-4829"})
-    data = {"patterns": {"p": [{"do": "type", "selector": "#q", "text": "{var:no} 처리"}]},
+    data = {"settle_timeout": 0, "patterns": {"p": [{"do": "type", "selector": "#q", "text": "{var:no} 처리"}]},
             "rules": [
                 {"name": "없음", "when": {"ocr": "없는글자", "region": [0, 0, 100, 30]}, "then": "p"},
                 {"name": "주문", "when": {"ocr": r"PT-(\d+)", "regex": True, "region": [0, 0, 100, 30], "as": "no"},
@@ -179,7 +179,7 @@ def test_retry_in_english_when_code_not_found(monkeypatch):
         seen.append(lang)
         return "주문번호 21-4829" if lang != "eng" else "FSHS PT-4829"
     monkeypatch.setattr(ocr, "read_text", read_text)
-    data = {"patterns": {"p": [{"do": "type", "text": "{var:no}"}]},
+    data = {"settle_timeout": 0, "patterns": {"p": [{"do": "type", "text": "{var:no}"}]},
             "rules": [{"when": {"ocr": r"PT-(\d+)", "regex": True, "region": [0, 0, 9, 9], "as": "no"},
                        "then": "p"}]}
     eng, drv, _, _ = engine(data)
@@ -272,3 +272,16 @@ def test_fit_region_improves_ocr(region_img):
     bad = (10, 50, 215, 95)
     fit, _ = ocr.fit_region(region_img, bad)
     assert "없습니다" in ocr.squash(ocr.read_text(region_img, fit))
+
+
+def test_settle_detects_next_item_by_ocr_value(monkeypatch):
+    """같은 위치·같은 색이라도 읽은 주문번호가 바뀌면 '다음 건'으로 보고 바로 진행."""
+    state = {"no": "1001"}
+    monkeypatch.setattr(ocr, "read_text", lambda img, region=None, **kw: f"주문 {state['no']}")
+    data = {"patterns": {"p": [{"do": "click", "x": 1, "y": 1}]},
+            "rules": [{"name": "주문", "when": {"ocr": r"주문 (\d+)", "regex": True, "region": [0, 0, 9, 9], "as": "no"},
+                       "then": "p"}]}
+    eng, drv, _, clk = engine(data)
+    drv.on_click = lambda x, y: state.update(no=str(int(state["no"]) + 1))
+    eng.tick()
+    assert eng.last_changed and clk.t < 1    # 5초 기다리지 않음

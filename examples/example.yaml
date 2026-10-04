@@ -11,6 +11,10 @@ max_actions_per_minute: 120            # 폭주 방지: 1분 동작 한도
 max_same_rule: 30                      # 같은 규칙이 30번 연속이면 화면이 멈춘 것으로 보고 일시정지
 pause_minutes: 30
 recheck_minutes: 10                    # 업무 종료 후 10분 뒤 새로고침해서 다시 감시 (0이면 프로그램 종료)
+settle_timeout: 5                      # 클릭 후 그 상황(버튼 등)이 사라질 때까지 최대 5초 기다림 → 같은 건 두 번 처리 방지
+keep_shots: 500                        # 저장 화면 최대 500장
+keep_days: 7                           # 저장 화면 7일 보관 (디스크 가득 참 방지)
+restart_browser_hours: 24              # 할 일 없을 때 24시간마다 브라우저 재시작 (메모리 정리)
 
 # ── 액션패턴: 클릭·입력 순서 ──
 patterns:

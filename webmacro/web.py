@@ -100,8 +100,10 @@ class LogBuffer(logging.Handler):
 
 # ---------- 브라우저 작업 스레드 ----------
 class Controller:
-    def __init__(self, config_path: Path, notifier: Notifier | None = None):
+    def __init__(self, config_path: Path, notifier: Notifier | None = None, allow_file: bool | None = None):
         self.config_path = Path(config_path).resolve()
+        # 서버 파일을 화면에 띄우지 못하게 file:// 주소는 기본 금지 (로컬 시험용으로만 WEBMACRO_ALLOW_FILE=1)
+        self.allow_file = os.environ.get("WEBMACRO_ALLOW_FILE") == "1" if allow_file is None else allow_file
         self.notifier = notifier or Notifier()
         self.q: queue.Queue = queue.Queue()
         self.driver: PlaywrightDriver | None = None
@@ -169,11 +171,14 @@ class Controller:
         return self.config_path.read_text(encoding="utf-8")
 
     def load(self):
-        return config_mod.load(self.config_path)
+        cfg = config_mod.load(self.config_path)
+        config_mod.check_urls(cfg, self.allow_file)
+        return cfg
 
     def save_text(self, text: str):
         data = yaml.safe_load(text)
         cfg = config_mod.parse(data, base_dir=self.config_path.parent)  # 검증 실패 시 ConfigError
+        config_mod.check_urls(cfg, self.allow_file)
         tmp = self.config_path.with_suffix(".tmp")
         tmp.write_text(text, encoding="utf-8")
         tmp.replace(self.config_path)
@@ -221,6 +226,8 @@ class Controller:
         if self.running:
             raise Busy("매크로 실행 중에는 화면 조작을 할 수 없습니다. 먼저 중지하세요.")
         act = a.get("action")
+        if act == "goto" and not self.allow_file and not config_mod.is_web_url(str(a.get("url", ""))):
+            raise ValueError("http:// 또는 https:// 주소만 열 수 있습니다")
 
         def fn():
             d = self._ensure_driver()
@@ -233,7 +240,7 @@ class Controller:
             elif act == "scroll":
                 d.scroll(0, int(a.get("dy", 400)))
             elif act == "goto":
-                d.goto(str(a["url"]))
+                d.goto(str(a["url"]).strip())
             elif act == "reload":
                 d.reload()
             elif act == "home":
@@ -252,7 +259,7 @@ class Controller:
         """지금 화면에서 어떤 규칙이 맞는지 (아무것도 누르지 않음)."""
         def fn():
             d = self._ensure_driver()
-            eng = Engine(self.load(), d, Notifier(), dry_run=True)
+            eng = Engine(self.load(), d, Notifier(), dry_run=True, allow_file=self.allow_file)
             hit = eng.evaluate(d.screenshot())
             if not hit:
                 return {"rule": None}
@@ -269,7 +276,13 @@ class Controller:
         def fn():
             img = self._ensure_driver().screenshot()
             text = ocr.read_text(img, region, lang=lang, psm=psm)
-            return {"text": text, "cuts": ocr.edge_cuts(img, region) if region else []}
+            out = {"text": text, "cuts": ocr.edge_cuts(img, region) if region else []}
+            # 한글 모드는 한글 옆 영문·코드를 자주 틀린다(PT-4829 → ㅁ1-4829). 실제 실행처럼 영어 모드 결과도 보여준다
+            if "eng" in lang.split("+") and lang != "eng":
+                eng_text = ocr.read_text(img, region, lang="eng", psm=psm)
+                if ocr.squash(eng_text) != ocr.squash(text):
+                    out["text_eng"] = eng_text
+            return out
         return self.call(fn)
 
     def check_region(self, region) -> dict:
@@ -326,7 +339,7 @@ class Controller:
                 d.close()
                 d.start()
 
-            eng = Engine(cfg, d, self.notifier, dry_run=dry_run, out_dir=self.out_dir,
+            eng = Engine(cfg, d, self.notifier, dry_run=dry_run, out_dir=self.out_dir, allow_file=self.allow_file,
                          sleep=self._sleep, on_event=self.monitor.on_event)
             self.monitor.started(cfg.url, dry_run)
             log.info("시작: %s (규칙 %d개%s)", cfg.url, len(cfg.rules), ", dry-run" if dry_run else "")
@@ -536,7 +549,8 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                 elif path == "/api/settings":
                     text = ctl.read_text()
                     url = str(body.get("url", "")).strip()
-                    if not re.match(r"^(https?|file)://", url):
+                    ok = config_mod.is_web_url(url) or (ctl.allow_file and url.startswith("file://"))
+                    if not ok:
                         raise config_mod.ConfigError("주소는 http:// 또는 https:// 로 시작해야 합니다")
                     text = set_top_level(text, "url", url)
                     if body.get("width") and body.get("height"):

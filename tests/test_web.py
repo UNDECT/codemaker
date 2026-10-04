@@ -33,7 +33,7 @@ def panel(tmp_path):
     pytest.importorskip("playwright.sync_api")
     (tmp_path / "site.html").write_text(SITE, encoding="utf-8")
     cfg = tmp_path / "config.yaml"   # 없으면 Controller가 새로 만든다
-    ctl = Controller(cfg, MemoryNotifier())
+    ctl = Controller(cfg, MemoryNotifier(), allow_file=True)
     logbuf = LogBuffer()
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ctl, logbuf, "pw"))
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -156,7 +156,7 @@ def test_ocr_endpoint(panel):
                                 encoding="utf-8")
     req(base, "/api/settings", {"url": (tmp / "o.html").as_uri(), "width": 800, "height": 600})
     code, r = req(base, "/api/ocr", {"region": [0, 0, 400, 60]})
-    assert code == 200 and "4829" in r["text"], r
+    assert code == 200 and "4829" in (r["text"] + r.get("text_eng", "")), r
     text = req(base, "/api/config")[1]["yaml"]
     text = text[:text.index("patterns:")] + (
         "patterns:\n  p: [{do: type, text: '{var:주문번호}'}]\n"
@@ -209,7 +209,7 @@ def test_cookie_login_flow(panel):
 
 def test_secure_cookie_behind_https_proxy(tmp_path):
     from webmacro.auth import Auth
-    ctl = Controller(tmp_path / "c.yaml", MemoryNotifier())
+    ctl = Controller(tmp_path / "c.yaml", MemoryNotifier(), allow_file=True)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ctl, LogBuffer(), "pw", trust_proxy=True))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
@@ -264,3 +264,41 @@ def test_region_check_endpoint(panel):
     code, r2 = req(base, "/api/region", {"region": r["suggested"]})
     assert r2["cuts"] == []
     assert req(base, "/api/region", {"region": [5, 5, 1, 1]})[0] == 400
+
+
+def test_file_urls_blocked_by_default(tmp_path):
+    """서버에서는 file:// 로 서버 안 파일(세션·로그인 정보)을 화면에 띄울 수 없어야 한다."""
+    ctl = Controller(tmp_path / "c.yaml", MemoryNotifier())
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(ctl, LogBuffer(), "pw"))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        assert req(base, "/api/settings", {"url": "file:///etc/passwd"})[0] == 400
+        text = req(base, "/api/config")[1]["yaml"]
+        bad = text.replace("url: https://example.com", "url: file:///data/state/auth.json")
+        code, r = req(base, "/api/config", {"yaml": bad})
+        assert code == 400 and "https" in r["error"]
+        bad2 = text.replace("    - {do: wait, sec: 1}", "    - {do: goto, url: 'file:///etc/passwd'}")
+        assert req(base, "/api/config", {"yaml": bad2})[0] == 400
+        code, r = req(base, "/api/browser", {"action": "goto", "url": "file:///etc/passwd"})
+        assert code == 400 and "https" in r["error"]
+        # 설정 파일을 직접 고쳐 넣어도 실행·화면 보기에서 막힌다
+        (tmp_path / "c.yaml").write_text(bad, encoding="utf-8")
+        code, r = req(base, "/api/screenshot")
+        assert code in (400, 500) and "https" in r["error"]
+        assert req(base, "/api/start", {})[0] == 400
+    finally:
+        httpd.shutdown()
+        ctl.shutdown()
+
+
+def test_dry_run_not_counted(panel):
+    base, ctl, tmp = panel
+    (tmp / "site.html").write_text(SITE, encoding="utf-8")
+    req(base, "/api/settings", {"url": (tmp / "site.html").as_uri(), "width": 800, "height": 600, "interval": 0.2})
+    assert req(base, "/api/start", {"dry_run": True})[0] == 200
+    wait_for(lambda: any("(시험)" in e["text"] for e in req(base, "/api/state")[1]["monitor"]["events"]))
+    req(base, "/api/stop", {})
+    wait_for(lambda: not req(base, "/api/state")[1]["running"])
+    m = req(base, "/api/state")[1]["monitor"]
+    assert m["today"]["done"] == 0 and m["today"]["rules"] == {}

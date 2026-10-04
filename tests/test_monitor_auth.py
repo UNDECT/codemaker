@@ -78,3 +78,18 @@ def test_auth_tokens_persist_and_rate_limit(tmp_path):
 def test_auth_disabled_without_password():
     a = Auth(None)
     assert not a.enabled and a.login("x", "") is None
+
+
+def test_dry_run_events_not_counted(tmp_path):
+    m = Monitor(tmp_path / "s.json", clock=Clock())
+    m.started("u", dry_run=True)
+    m.on_event("rule", rule="r", pattern="p")
+    m.on_event("done", rule="r")
+    m.on_event("error", rule="r", message="x", shot=None)
+    s = m.snapshot()
+    assert s["today"]["done"] == 0 and s["today"]["errors"] == 0 and s["today"]["rules"] == {}
+    assert any("(시험)" in e["text"] for e in s["events"])
+    m.finished("끝")
+    m.started("u", dry_run=False)
+    m.on_event("done", rule="r")
+    assert m.snapshot()["today"]["done"] == 1
