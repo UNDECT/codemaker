@@ -72,7 +72,7 @@ def test_auth_required(panel):
     assert req(base, "/api/state", pw=None)[0] == 401
     assert req(base, "/api/state", pw="wrong")[0] == 401
     code, html = req(base, "/")
-    assert code == 200 and "webmacro" in html.decode()
+    assert code == 200 and "<title>매크로</title>" in html.decode()
 
 
 def test_full_flow(panel):

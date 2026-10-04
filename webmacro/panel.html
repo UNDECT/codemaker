@@ -2,317 +2,375 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#2563eb">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="매크로">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="icon" href="/icon-192.png">
-<title>webmacro 관리</title>
+<title>매크로</title>
 <style>
-:root{--bg:#f5f6f8;--card:#fff;--fg:#1d2330;--mute:#6b7280;--line:#e2e5ea;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#d97706;--soft:#eef2ff}
-@media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1f26;--fg:#e6e9ee;--mute:#9aa3af;--line:#2b323c;--acc:#60a5fa;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--soft:#1e2633}}
-*{box-sizing:border-box}
+:root{--bg:#f2f4f7;--card:#fff;--fg:#151a23;--mute:#6b7280;--line:#e4e7ec;--acc:#2563eb;--acc2:#dbe6ff;--ok:#16a34a;--bad:#dc2626;--warn:#d97706;--soft:#f5f7fb;--shadow:0 1px 2px rgba(16,24,40,.06),0 4px 14px rgba(16,24,40,.06)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d1117;--card:#161b22;--fg:#e6edf3;--mute:#8b949e;--line:#262d36;--acc:#4c8dff;--acc2:#1b2a44;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--soft:#1c222b;--shadow:none}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;padding-bottom:calc(64px + env(safe-area-inset-bottom))}
-header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top));display:flex;gap:10px;align-items:center}
-header h1{font-size:16px;margin:0}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;background:var(--soft)}
-.pill i{width:9px;height:9px;border-radius:50%;background:var(--mute)}
+body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  padding-bottom:calc(72px + env(safe-area-inset-bottom));overscroll-behavior-y:none}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;touch-action:manipulation;border:0;background:none;padding:0}
+.hide{display:none!important}
+/* 상단바 */
+.bar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:10px}
+.bar h1{font-size:22px;margin:0;flex:1;letter-spacing:-.3px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:13px;font-weight:600;background:var(--card);box-shadow:var(--shadow)}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--mute)}
 .pill.run i{background:var(--ok);animation:pulse 1.4s infinite}.pill.pause i{background:var(--warn)}.pill.err i{background:var(--bad)}
-@keyframes pulse{50%{opacity:.3}}
-main{max-width:1100px;margin:0 auto;padding:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
-.tab{display:none;min-width:0}.tab.on{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
-nav{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;border:0;background:none;color:var(--mute);padding:10px 0 8px;font:inherit;font-size:13px;border-radius:0}
-nav button b{display:block;font-size:20px;line-height:1.1}
-nav button.on{color:var(--acc);font-weight:600}
-.card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
-.card h2{font-size:15px;margin:0 0 10px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-label{color:var(--mute);font-size:13px}
-input,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
-input[type=url]{flex:1 1 260px;min-width:0}
-input.num{width:84px}
-button{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;padding:8px 12px;cursor:pointer;touch-action:manipulation}
-button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
-button.go{background:var(--ok);border-color:var(--ok);color:#fff}
-button.stop{background:var(--bad);border-color:var(--bad);color:#fff}
-button.big{flex:1;padding:12px;font-weight:600;font-size:16px}
-button:disabled{opacity:.45;cursor:default}
-.msg{font-size:13px;min-height:1.4em;margin-top:6px}.msg.err{color:var(--bad)}.msg.ok{color:var(--ok)}
-.hint{color:var(--mute);font-size:12px}
-code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:13px}
-/* 현황 */
-#act{font-size:17px;font-weight:600;margin:6px 0 2px;word-break:break-all}
-.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.tile{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
-.tile b{display:block;font-size:24px;line-height:1.2}
-.tile span{font-size:12px;color:var(--mute)}
-.tile.bad b{color:var(--bad)}
-#rules{margin:8px 0 0;padding:0;list-style:none;font-size:14px}
-#rules li{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
-#live{width:100%;border-radius:8px;border:1px solid var(--line);background:#000;display:block;min-height:60px}
-#events{list-style:none;margin:0;padding:0;font-size:14px}
-#events li{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);align-items:flex-start}
-#events time{color:var(--mute);font-variant-numeric:tabular-nums;flex:none;font-size:12px;padding-top:2px}
-#events .tx{flex:1;word-break:break-all}
-#events .error .tx{color:var(--bad)}#events .done .tx{color:var(--ok)}#events .pause .tx{color:var(--warn)}
-#events a,#shots a{color:var(--acc)}
-#errBox{display:none;border-color:var(--bad)}
-#shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
-#shots figure{margin:0;font-size:11px;color:var(--mute)}
-#shots img{width:100%;border-radius:6px;border:1px solid var(--line);display:block}
-/* 화면 */
-#shotWrap{position:relative;max-width:100%;overscroll-behavior:contain;margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:70vh;background:#000}
-#shot:not([src]){display:none}
-#shotWrap:has(#shot:not([src]))::before{content:"'화면 새로고침'을 누르면 서버 브라우저 화면이 여기에 나옵니다";display:block;padding:24px;color:#9aa3af;text-align:center}
-#shot{display:block;width:100%;height:auto;cursor:crosshair;user-select:none;-webkit-user-drag:none;touch-action:none}
-#sel{position:absolute;border:2px dashed #ff0;background:rgba(255,255,0,.12);pointer-events:none;display:none}
-#mark{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid #fff;outline:2px solid #000;border-radius:50%;pointer-events:none;display:none}
-.pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
-.sw{width:22px;height:22px;border-radius:4px;border:1px solid var(--line)}
-#setupCard{border-color:var(--acc);display:none}
-#setupCard ol{margin:8px 0 0;padding-left:20px;color:var(--mute);font-size:13px}
-.addr input{min-width:0}
-#recBox{display:none;margin-top:8px;padding:10px;border:2px solid var(--bad);border-radius:10px}
-#recBox ol{margin:6px 0;padding-left:22px;font-size:14px;max-height:180px;overflow:auto}
-#recBox li button{padding:0 6px;margin-left:6px;font-size:12px}
-.recDot{color:var(--bad);animation:pulse 1.2s infinite}
-#btnRec.on{background:var(--bad);border-color:var(--bad);color:#fff}
-#ruleList{list-style:none;margin:0;padding:0}
-#ruleList li{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
-#ruleList .rname{font-weight:600}
-#ruleList .rsteps{color:var(--mute);font-size:13px}
-#ruleDlg{border:0;border-radius:14px;padding:16px;background:var(--card);color:var(--fg);width:min(420px,94vw)}
-#ruleDlg label.opt{display:block;padding:6px 0}
-#ruleDlg input[type=text]{width:100%;margin-top:4px}
-#regWarn{display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(217,119,6,.12);color:var(--warn);font-size:14px;align-items:center;gap:8px;flex-wrap:wrap}
-#zoomBar{display:flex;gap:6px;align-items:center;margin-top:8px}
-#zoomBar button{min-width:40px;padding:6px 10px;white-space:nowrap;flex:none}
-#zoomPct{min-width:48px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;color:var(--mute)}
-.seg button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
-textarea#yaml{width:100%;min-height:360px;font:13px/1.45 ui-monospace,Consolas,"D2Coding",monospace;white-space:pre;tab-size:2}
+@keyframes pulse{50%{opacity:.25}}
+main{max-width:640px;margin:0 auto;padding:0 12px}
+.page{display:none}.page.on{display:block;animation:fade .18s}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}}
+/* 하단 탭 */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs button{flex:1;color:var(--mute);padding:8px 0 7px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav.tabs svg{width:24px;height:24px}
+nav.tabs button.on{color:var(--acc)}
+/* 카드·목록 */
+.card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 10px;color:var(--mute);font-weight:600}
+.sec{font-size:13px;color:var(--mute);font-weight:600;margin:18px 6px 8px}
+.list{background:var(--card);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:12px}
+.item{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);width:100%;text-align:left;min-height:56px}
+.item:last-child{border-bottom:0}
+.item .t{flex:1;min-width:0}.item .t b{display:block;font-weight:600}.item .t small{display:block;color:var(--mute);font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.item .chev{color:var(--mute);font-size:20px}
+.ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;font-size:19px;background:var(--acc2);color:var(--acc)}
+.muted{color:var(--mute)}.small{font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 18px;border-radius:14px;font-weight:600;background:var(--soft);border:1px solid var(--line)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.sm{min-height:38px;padding:0 12px;border-radius:11px;font-size:14px}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.4}
+.row{display:flex;gap:8px;align-items:center}
+.row.wrap{flex-wrap:wrap}
+input[type=text],input[type=url],input[type=number],input[type=password],select,textarea{width:100%;min-height:48px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--soft);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+label.chk{display:flex;gap:10px;align-items:center;padding:10px 0;font-size:15px}
+label.chk input{width:22px;height:22px;accent-color:var(--acc);flex:none}
+.field{margin:10px 0}.field>span{display:block;font-size:13px;color:var(--mute);margin:0 0 5px 2px}
+.msg{font-size:14px;min-height:1.2em;margin-top:8px}.msg.err{color:var(--bad)}.msg.ok{color:var(--ok)}
+/* 홈 */
+.hero{text-align:center;padding:22px 16px 18px}
+.hero .state{font-size:13px;color:var(--mute)}
+.hero .act{font-size:18px;font-weight:700;margin:6px 0 16px;word-break:break-all;min-height:26px}
+.power{width:116px;height:116px;border-radius:50%;margin:0 auto;display:grid;place-items:center;color:#fff;font-weight:700;font-size:17px;
+  background:var(--ok);box-shadow:0 8px 24px color-mix(in srgb,var(--ok) 40%,transparent);transition:transform .1s}
+.power:active{transform:scale(.96)}
+.power.stop{background:var(--bad);box-shadow:0 8px 24px color-mix(in srgb,var(--bad) 40%,transparent)}
+.power svg{width:34px;height:34px;display:block;margin:0 auto 2px}
+.link{color:var(--acc);font-weight:600;font-size:14px;padding:10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--soft);border-radius:14px;padding:12px 6px;text-align:center}
+.stat b{display:block;font-size:24px}.stat span{font-size:12px;color:var(--mute)}
+.stat.bad b{color:var(--bad)}
+#live{width:100%;display:block;border-radius:12px;background:#000;min-height:80px}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.tl li:last-child{border:0}
+.tl time{color:var(--mute);font-size:12px;flex:none;padding-top:2px;font-variant-numeric:tabular-nums}
+.tl .x{flex:1;word-break:break-all}
+.tl .error .x{color:var(--bad)}.tl .done .x,.tl .stop .x{color:var(--ok)}.tl .pause .x{color:var(--warn)}
+.tl a{color:var(--acc)}
+.banner{border-radius:16px;padding:14px 16px;margin-bottom:12px;font-size:14px}
+.banner.bad{background:color-mix(in srgb,var(--bad) 12%,var(--card));color:var(--bad)}
+.banner.info{background:var(--acc2)}
+.steps-guide{list-style:none;margin:8px 0 0;padding:0}
+.steps-guide li{display:flex;gap:10px;align-items:center;padding:8px 0}
+.steps-guide .n{width:26px;height:26px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
+.steps-guide .done .n{background:var(--ok);color:#fff}
+/* 매크로 목록 */
+.rule .ico.color{border:3px solid var(--card);box-shadow:0 0 0 1px var(--line)}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--soft);color:var(--mute);margin-left:6px;vertical-align:middle}
+.badge.stop{background:color-mix(in srgb,var(--bad) 14%,var(--card));color:var(--bad)}
+.fab{position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:25;height:56px;padding:0 22px;border-radius:18px;background:var(--acc);color:#fff;font-weight:700;
+  box-shadow:0 8px 20px color-mix(in srgb,var(--acc) 45%,transparent);display:flex;align-items:center;gap:8px}
+.tpl{display:grid;gap:10px}
+.tpl button{display:flex;gap:12px;align-items:center;text-align:left;background:var(--card);border-radius:16px;padding:14px;box-shadow:var(--shadow)}
+.tpl b{display:block}.tpl small{color:var(--mute);font-size:13px}
+/* 원격 화면 */
+.remote .addr{display:flex;gap:6px;margin-bottom:8px}
+.remote .addr input{min-height:42px;padding:8px 12px;font-size:14px}
+.ib{width:42px;height:42px;flex:none;border-radius:12px;background:var(--soft);border:1px solid var(--line);display:grid;place-items:center;font-size:17px}
+.ib.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.seg{display:flex;background:var(--soft);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;min-height:38px;border-radius:9px;font-size:14px;font-weight:600;color:var(--mute)}
+.seg button.on{background:var(--card);color:var(--fg);box-shadow:var(--shadow)}
+.view{position:relative;overflow:auto;border-radius:14px;background:#000;max-height:62vh;margin:8px 0;overscroll-behavior:contain}
+.view img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none;touch-action:none}
+.view .empty{color:#9aa3af;text-align:center;padding:40px 16px;font-size:14px}
+.view .sel{position:absolute;border:2px dashed #ffd400;background:rgba(255,212,0,.15);pointer-events:none;display:none}
+.view .mk{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border:3px solid #fff;outline:2px solid #000;border-radius:50%;pointer-events:none;display:none}
+.view .tap{position:absolute;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;background:rgba(37,99,235,.45);pointer-events:none;animation:tap .5s forwards}
+@keyframes tap{to{transform:scale(1.8);opacity:0}}
+.view .busy{position:absolute;right:8px;top:8px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;padding:3px 8px;border-radius:8px;display:none}
+.hintline{font-size:13px;color:var(--mute);margin:6px 2px}
+.picked{display:flex;align-items:center;gap:10px;background:var(--soft);border-radius:12px;padding:8px 12px;font-size:14px}
+.sw{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);flex:none}
+.keys{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
+.keys::-webkit-scrollbar{display:none}
+.keys button{flex:none;min-height:40px;padding:0 14px;border-radius:11px;background:var(--soft);border:1px solid var(--line);font-size:14px;font-weight:600}
+.warn{background:color-mix(in srgb,var(--warn) 14%,var(--card));color:var(--warn);border-radius:12px;padding:10px 12px;font-size:14px;margin-top:8px}
+/* 전체 화면 마법사 */
+.full{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;animation:up .2s}
+@keyframes up{from{transform:translateY(24px);opacity:0}}
+.full .head{display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 8px 8px;background:var(--bg)}
+.full .head h2{flex:1;margin:0;font-size:18px}
+.full .body{flex:1;overflow:auto;padding:4px 14px 16px}
+.full .foot{padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;background:var(--card);border-top:1px solid var(--line)}
+.full .foot .btn{flex:1}
+.dots{display:flex;gap:6px;justify-content:center;padding:2px 0 10px}
+.dots i{width:28px;height:5px;border-radius:3px;background:var(--line)}.dots i.on{background:var(--acc)}
+.q{font-size:21px;font-weight:700;margin:6px 2px 12px;letter-spacing:-.3px}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choice{background:var(--card);border-radius:16px;padding:14px;text-align:left;box-shadow:var(--shadow);border:2px solid transparent;min-height:96px}
+.choice.on{border-color:var(--acc);background:var(--acc2)}
+.choice .e{font-size:24px}.choice b{display:block;margin-top:4px}.choice small{color:var(--mute);font-size:12px}
+.choice.wide{grid-column:1/-1;min-height:0}
+.stepcards{list-style:none;margin:0 0 10px;padding:0;counter-reset:s}
+.stepcards li{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:14px;padding:10px 10px 10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
+.stepcards li::before{counter-increment:s;content:counter(s);width:24px;height:24px;border-radius:50%;background:var(--acc);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;flex:none}
+.stepcards .t{flex:1;min-width:0;font-size:15px;word-break:break-all}
+.stepcards .mini{width:34px;height:34px;border-radius:10px;color:var(--mute);font-size:16px}
+.adds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.adds button{background:var(--card);border-radius:14px;padding:12px;text-align:left;box-shadow:var(--shadow);font-size:14px;font-weight:600;display:flex;gap:8px;align-items:center;min-height:54px}
+.adds button.main{grid-column:1/-1;background:var(--bad);color:#fff;justify-content:center;font-size:16px}
+.adds button em{font-style:normal;font-size:20px}
+.rec{display:flex;align-items:center;gap:8px;color:var(--bad);font-weight:700}
+.rec i{width:10px;height:10px;border-radius:50%;background:var(--bad);animation:pulse 1s infinite}
+/* 바텀 시트 */
+.sheet-bg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.sheet{width:100%;max-width:560px;background:var(--card);border-radius:22px 22px 0 0;padding:8px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto;animation:up .2s}
+.sheet::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:4px auto 12px}
+.sheet h3{margin:0 0 6px;font-size:19px}
+.sheet .acts{display:flex;gap:8px;margin-top:14px}.sheet .acts .btn{flex:1}
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#111827;color:#fff;padding:11px 16px;border-radius:14px;font-size:14px;z-index:90;max-width:90vw;display:none;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+#viewer{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center}
+#viewer img{max-width:100vw;max-height:100vh}
+details summary{cursor:pointer;font-weight:600;padding:4px 0;list-style:none}
+details summary::after{content:" ›";color:var(--mute)}
+details[open] summary::after{content:" ⌄"}
+textarea#yaml{min-height:340px;font:13px/1.45 ui-monospace,Consolas,"D2Coding",monospace;white-space:pre;tab-size:2}
 pre#log{margin:0;max-height:300px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
-#toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#111;color:#fff;padding:8px 14px;border-radius:8px;font-size:14px;display:none;z-index:9;max-width:90vw}
-dialog{border:0;padding:0;background:transparent;max-width:96vw}
-dialog img{max-width:96vw;max-height:85vh;border-radius:8px;display:block}
-dialog::backdrop{background:rgba(0,0,0,.8)}
+#shots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+#shots img{width:100%;border-radius:8px;display:block}
+#shots figure{margin:0;font-size:10px;color:var(--mute);word-break:break-all}
 </style>
 </head>
 <body>
-<header>
-  <h1>업무 매크로</h1>
-  <span id="pill" class="pill"><i></i><span id="status">-</span></span>
-  <span style="flex:1"></span>
-  <button id="btnLogout" class="hint" style="display:none">로그아웃</button>
-</header>
+<div class="bar"><h1 id="title">홈</h1><span id="pill" class="pill"><i></i><span id="status">-</span></span></div>
 
 <main>
-<!-- ───────── 현황 ───────── -->
-<section class="tab on" id="t-status">
-  <div class="card" id="setupCard">
-    <h2>업무 사이트 설정</h2>
-    <div class="hint" id="setupHint"></div>
-    <div class="row" style="margin-top:8px">
-      <input type="url" id="setupUrl" placeholder="https://업무사이트주소" style="flex:1 1 200px">
-      <button class="pri" id="btnSetup">이 사이트로</button>
-    </div>
-    <ol>
-      <li>업무 사이트 주소 입력 → <b>이 사이트로</b></li>
-      <li><b>화면</b> 탭 → <b>조작</b>에서 직접 로그인 → <b>로그인 상태 저장</b></li>
-      <li><b>화면</b> 탭 → <b>● 녹화</b> → 할 일을 한 번 직접 해보기 → <b>녹화 끝</b> → 언제 실행할지 고르기</li>
-      <li>여기서 <b>시험</b>(클릭 없이 확인) → <b>▶ 시작</b></li>
-    </ol>
-    <div id="setupMsg" class="msg"></div>
+<!-- ───── 홈 ───── -->
+<section class="page on" id="p-home">
+  <div class="card hide" id="guide">
+    <b>처음 시작하기</b>
+    <ul class="steps-guide" id="guideList"></ul>
   </div>
-
-  <div class="card">
-    <div class="hint" id="since">-</div>
-    <div id="act">-</div>
-    <div class="hint" id="lastCheck"></div>
-    <div class="row" style="margin-top:12px">
-      <button class="big go" id="btnStart">▶ 시작</button>
-      <button class="big" id="btnDry" title="클릭하지 않고 판단만 기록">시험</button>
-      <button class="big stop" id="btnStop">■ 중지</button>
-    </div>
+  <div class="banner bad hide" id="errBanner"></div>
+  <div class="card hero">
+    <div class="state" id="since">-</div>
+    <div class="act" id="act">-</div>
+    <button class="power" id="power"></button>
+    <div><button class="link" id="btnDry">시험 실행 (클릭 없이 판단만)</button></div>
   </div>
-
   <div class="card">
     <h2>오늘</h2>
-    <div class="tiles">
-      <div class="tile"><b id="nDone">0</b><span>처리</span></div>
-      <div class="tile" id="tErr"><b id="nErr">0</b><span>오류</span></div>
-      <div class="tile"><b id="nCheck">0</b><span>화면 확인</span></div>
+    <div class="stats">
+      <div class="stat"><b id="nDone">0</b><span>처리</span></div>
+      <div class="stat" id="sErr"><b id="nErr">0</b><span>오류</span></div>
+      <div class="stat"><b id="nCheck">0</b><span>화면 확인</span></div>
     </div>
-    <ul id="rules"></ul>
-    <div class="hint" id="hist" style="margin-top:8px"></div>
+    <div id="todayRules" class="small muted" style="margin-top:10px"></div>
   </div>
-
-  <div class="card" id="errBox">
-    <h2 style="color:var(--bad)">최근 오류</h2>
-    <div id="errText"></div>
-  </div>
-
   <div class="card">
-    <div class="row"><h2 style="margin:0;flex:1">실시간 화면</h2><label><input type="checkbox" id="liveOn" checked> 자동</label></div>
-    <img id="live" alt="" style="margin-top:8px">
-    <div class="hint" id="liveAt"></div>
+    <div class="row"><h2 style="flex:1;margin:0">실시간 화면</h2><span class="small muted" id="liveAt"></span></div>
+    <img id="live" alt="" style="margin-top:10px">
   </div>
-
   <div class="card">
     <h2>진행 기록</h2>
-    <ul id="events"></ul>
-  </div>
-
-  <div class="card">
-    <div class="row"><h2 style="margin:0;flex:1">저장된 화면 (오류·종료 등)</h2><button id="btnShots">새로고침</button></div>
-    <div id="shots" style="margin-top:8px"></div>
+    <ul class="tl" id="events"></ul>
   </div>
 </section>
 
-<!-- ───────── 화면 ───────── -->
-<section class="tab" id="t-screen">
-  <div class="card">
-    <div class="row addr">
-      <button id="navBack" title="뒤로">◀</button><button id="navFwd" title="앞으로">▶</button><button id="navReload" title="새로고침">⟳</button>
-      <input id="addr" type="url" placeholder="주소 입력 후 이동" style="flex:1 1 150px" autocapitalize="off">
-      <button id="navGo" class="pri">이동</button>
+<!-- ───── 매크로 ───── -->
+<section class="page" id="p-macros">
+  <div id="noRules" class="hide">
+    <div class="sec">이렇게 시작해 보세요</div>
+    <div class="tpl">
+      <button data-tpl="buy"><span class="ico">🛒</span><span><b>색이 나오면 클릭 → 무통장입금까지</b><small>새로고침하며 기다리다가 아이템이 뜨면 바로 주문</small></span></button>
+      <button data-tpl="click"><span class="ico">🎯</span><span><b>색이 보이면 클릭하고 따라하기</b><small>버튼 색을 찾아 누르고, 녹화한 동작을 반복</small></span></button>
+      <button data-tpl="ocr"><span class="ico">🔤</span><span><b>화면 글자를 읽어서 입력</b><small>코드·번호를 보고 입력칸에 넣기</small></span></button>
+      <button data-tpl="stop"><span class="ico">⏹</span><span><b>이 글자가 보이면 멈춤</b><small>예: '처리할 항목이 없습니다'</small></span></button>
     </div>
-    <div class="row" style="margin-top:6px">
-      <button id="btnSetSite">지금 주소를 업무 사이트로 저장</button>
-      <button id="btnRec">● 녹화</button>
+  </div>
+  <div id="hasRules">
+    <div class="sec">위에서부터 먼저 맞는 매크로 하나가 실행됩니다</div>
+    <div class="list" id="ruleList"></div>
+    <div class="list">
+      <button class="item" id="btnAddStop"><span class="ico" style="background:color-mix(in srgb,var(--bad) 14%,var(--card));color:var(--bad)">⏹</span>
+        <span class="t"><b>멈춤 조건 추가</b><small>이게 보이면 매크로를 끝냄</small></span><span class="chev">›</span></button>
+      <button class="item" id="btnRefreshOpt"><span class="ico">⟳</span>
+        <span class="t"><b>안 맞으면 새로고침</b><small id="refreshState">-</small></span><span class="chev">›</span></button>
     </div>
-    <div id="recBox">
-      <b><span class="recDot">●</span> 녹화 중 · <span id="recCount">0</span>단계</b>
-      <div class="hint">'조작' 모드에서 누르고 입력한 것이 순서대로 기록됩니다.</div>
-      <ol id="recList"></ol>
-      <label class="hint"><input type="checkbox" id="secretType"> 다음 입력은 비밀번호 (녹화에 저장 안 함)</label>
-      <div class="hint" style="margin-top:6px">화면 글자를 보고 입력: ① 조작 모드로 입력칸 누르기 → ② 선택 모드로 읽을 글자 드래그 → ③ 아래 버튼</div>
-      <div class="row" style="margin-top:4px">
-        <select id="readKind"><option value="kor">한글 포함</option><option value="eng">영문·숫자 코드</option><option value="num">숫자만</option></select>
-        <button id="recRead">영역 글자 읽어 입력</button>
+  </div>
+  <button class="fab" id="fab">＋ 새 매크로</button>
+</section>
+
+<!-- ───── 브라우저 ───── -->
+<section class="page" id="p-browser">
+  <div id="remoteHome">
+    <div class="remote" id="remote">
+      <div class="addr">
+        <button class="ib" id="navBack" aria-label="뒤로">‹</button>
+        <button class="ib" id="navReload" aria-label="새로고침">⟳</button>
+        <input id="addr" type="url" placeholder="주소 입력" autocapitalize="off" autocomplete="off" enterkeyhint="go">
+        <button class="ib" id="navGo" aria-label="이동">→</button>
       </div>
-      <div class="row" style="margin-top:6px"><button class="pri" id="recStop">녹화 끝 → 규칙 만들기</button><button id="recCancel">취소</button></div>
+      <div class="seg" id="modeSeg"><button data-mode="ctl" class="on">👆 조작</button><button data-mode="pick">🎨 색·영역 고르기</button></div>
+      <div class="hintline" id="modeHint"></div>
+      <div class="view" id="view"><div class="empty" id="viewEmpty">화면을 불러오는 중…</div><img id="shot" alt="" class="hide">
+        <div class="sel" id="sel"></div><div class="mk" id="mk"></div><div class="busy" id="busy">불러오는 중</div></div>
+      <div class="picked hide" id="picked"><span class="sw" id="sw"></span><span id="pickedTx" style="flex:1"></span>
+        <button class="btn sm" id="btnReadRegion">글자 읽기</button></div>
+      <div class="warn hide" id="regWarn"><span id="regWarnTx"></span> <button class="btn sm" id="btnFit">자동 맞춤</button></div>
+      <div id="ctlBar">
+        <div class="row" style="margin-top:8px"><input type="text" id="typeText" placeholder="입력할 글자" enterkeyhint="send" autocapitalize="off">
+          <button class="btn pri sm" id="btnType" style="min-height:48px;white-space:nowrap;flex:none">입력</button></div>
+        <label class="chk small hide" id="secretRow"><input type="checkbox" id="secretType"> 비밀번호 (녹화에 저장 안 함)</label>
+        <div class="keys" style="margin-top:8px">
+          <button data-key="Enter">Enter</button><button data-key="Tab">Tab</button><button data-key="Backspace">⌫ 지우기</button>
+          <button data-scroll="-500">▲ 위로</button><button data-scroll="500">▼ 아래로</button><button id="btnHome">⌂ 처음</button>
+        </div>
+      </div>
     </div>
-    <div class="row" style="margin-top:8px">
-      <button id="btnShot" class="pri">화면 새로고침</button>
-      <label><input type="checkbox" id="auto"> 자동(2초)</label>
-      <span class="seg row"><button id="mPick" class="active">선택</button><button id="mCtl">조작</button></span>
-      <button id="btnTest">지금 화면 판정</button>
-    </div>
-    <div class="hint" id="curUrl"></div>
-    <div class="row" id="ctlRow" style="margin-top:8px;display:none">
-      <input id="typeText" placeholder="입력할 글자 (아이디 등)" style="flex:1 1 180px">
-      <button id="btnType">입력</button>
-      <button data-key="Enter">Enter</button><button data-key="Tab">Tab</button><button data-key="Backspace">⌫</button>
-      <button id="btnUp">▲</button><button id="btnDown">▼</button>
-      <button id="btnHome">업무 사이트 처음으로</button>
-      <button class="pri" id="btnSession">로그인 상태 저장</button>
-    </div>
-    <div class="hint" id="modeHint" style="margin-top:6px"></div>
-    <div class="pick">
-      <span class="sw" id="sw"></span>
-      <span>좌표 <code id="pxy">-</code> 색 <code id="pcol">-</code> 영역 <code id="preg">-</code></span>
-    </div>
-    <div class="pick">
-      <button id="insColor" disabled>+ 색 조건</button>
-      <button id="insClick" disabled>+ 좌표 클릭</button>
-      <button id="insRegion" disabled>+ 영역</button>
-      <button id="btnOcr" disabled>영역 글자 읽기</button>
-      <button id="insOcr" disabled>+ 글자(OCR) 조건</button>
-      <button id="insRead" disabled>+ 글자 읽기 단계</button>
-    </div>
-    <div id="regWarn"><span id="regWarnText"></span><button id="btnFit" class="pri">영역 자동 맞춤</button></div>
-    <pre id="ocrOut" class="hint" style="display:none;margin:6px 0 0;white-space:pre-wrap"></pre>
-    <div id="zoomBar">
-      <button id="zOut" aria-label="축소">－</button><span id="zoomPct">100%</span><button id="zIn" aria-label="확대">＋</button>
-      <button id="zFit">맞춤</button>
-      <span class="hint">두 손가락: 확대·이동 · PC: Ctrl+휠</span>
-    </div>
-    <div id="shotMsg" class="msg"></div>
-    <div id="shotWrap"><img id="shot" alt=""><div id="sel"></div><div id="mark"></div></div>
-    <canvas id="cv" hidden></canvas>
+  </div>
+  <div class="list" style="margin-top:10px">
+    <button class="item" id="btnSession"><span class="ico">🔑</span><span class="t"><b>로그인 상태 저장</b><small>여기서 로그인한 뒤 누르면 매크로도 로그인된 상태로 시작</small></span></button>
+    <button class="item" id="btnSetSite"><span class="ico">🏠</span><span class="t"><b>지금 주소를 시작 사이트로</b><small id="siteNow">-</small></span></button>
+    <button class="item" id="btnTest"><span class="ico">🧪</span><span class="t"><b>지금 화면 판정</b><small>어떤 매크로가 실행될지 (누르지 않음)</small></span></button>
   </div>
 </section>
 
-<!-- ───────── 설정 ───────── -->
-<section class="tab" id="t-config">
+<!-- ───── 설정 ───── -->
+<section class="page" id="p-settings">
   <div class="card">
     <h2>사이트</h2>
+    <div class="field"><span>시작 주소</span><input type="url" id="url" placeholder="https://사이트주소" autocapitalize="off"></div>
     <div class="row">
-      <input type="url" id="url" placeholder="https://업무사이트주소">
+      <div class="field" style="flex:1"><span>확인 주기(초)</span><input type="number" id="interval" step="0.5" min="0.2"></div>
+      <div class="field" style="flex:1"><span>화면 크기</span><select id="vp">
+        <option value="1920x1080">PC 1920×1080</option><option value="1366x768">노트북 1366×768</option>
+        <option value="1280x720">작게 1280×720</option><option value="430x932">휴대폰 430×932</option></select></div>
     </div>
-    <div class="row" style="margin-top:8px">
-      <label>화면</label><input class="num" id="w" type="number" min="320"> × <input class="num" id="h" type="number" min="240">
-      <label>확인 주기(초)</label><input class="num" id="interval" type="number" step="0.5" min="0.2">
-      <button class="pri" id="btnSaveSite">저장하고 열기</button>
-    </div>
-    <label class="hint" style="display:block;margin-top:8px"><input type="checkbox" id="refresh">
-      맞는 규칙이 없으면 새로고침 (확인 주기마다 → 원하는 색이 뜰 때까지)</label>
-    <div id="siteMsg" class="msg"></div>
+    <label class="chk"><input type="checkbox" id="refresh"> 맞는 매크로가 없으면 새로고침 (원하는 색이 뜰 때까지)</label>
+    <button class="btn pri wide" id="btnSaveSite">저장</button>
+    <div class="msg" id="siteMsg"></div>
   </div>
   <div class="card">
-    <h2>규칙 목록</h2>
-    <div class="hint">위에서부터 먼저 맞는 규칙 하나가 실행됩니다. 새 규칙은 '화면' 탭의 ● 녹화로 만드세요.</div>
-    <ul id="ruleList" style="margin-top:8px"></ul>
-    <button id="btnAddStop">+ 업무 종료 조건 (이게 보이면 멈춤)</button>
-    <div id="ruleMsg" class="msg"></div>
+    <details><summary>저장된 화면 (주문 완료·오류 등)</summary><div id="shots" style="margin-top:10px"></div></details>
   </div>
   <div class="card">
-    <h2>고급: 설정 직접 편집</h2>
-    <div class="hint">"화면" 탭의 + 버튼들이 커서가 있는 줄 아래에 넣어 줍니다. 저장할 때 자동 검사합니다.</div>
-    <textarea id="yaml" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
-    <div class="row" style="margin-top:8px">
-      <button class="pri" id="btnSaveYaml">검사하고 저장</button>
-      <button id="btnRevert">되돌리기</button>
-    </div>
-    <div id="yamlMsg" class="msg"></div>
-    <div class="hint" id="cfgPath"></div>
+    <details><summary>고급: 설정 파일 직접 편집</summary>
+      <textarea id="yaml" spellcheck="false" autocapitalize="off" autocomplete="off" style="margin-top:10px"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn pri" id="btnSaveYaml" style="flex:1">검사하고 저장</button><button class="btn" id="btnRevert">되돌리기</button></div>
+      <div class="msg" id="yamlMsg"></div>
+      <div class="small muted" id="cfgPath"></div>
+    </details>
   </div>
-  <div class="card">
-    <h2>로그</h2>
-    <pre id="log"></pre>
-  </div>
+  <div class="card"><details><summary>로그</summary><pre id="log" style="margin-top:10px"></pre></details></div>
+  <div class="list"><button class="item hide" id="btnLogout"><span class="ico">⎋</span><span class="t"><b>로그아웃</b></span></button></div>
 </section>
 </main>
 
-<nav>
-  <button data-tab="status" class="on"><b>◉</b>현황</button>
-  <button data-tab="screen"><b>▣</b>화면</button>
-  <button data-tab="config"><b>⚙</b>설정</button>
+<nav class="tabs">
+  <button data-tab="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</button>
+  <button data-tab="macros"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>매크로</button>
+  <button data-tab="browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>브라우저</button>
+  <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>설정</button>
 </nav>
+
+<!-- ───── 새 매크로 (전체 화면) ───── -->
+<div class="full hide" id="wiz">
+  <div class="head"><button class="ib" id="wBack" aria-label="뒤로">‹</button><h2 id="wTitle">새 매크로</h2><button class="ib" id="wClose" aria-label="닫기">✕</button></div>
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="body" id="wBody">
+    <!-- 1. 언제 -->
+    <div id="w1">
+      <div class="q">언제 실행할까요?</div>
+      <div class="choices">
+        <button class="choice" data-when="color"><div class="e">🎨</div><b>이 색이 보이면</b><small>버튼·아이템 색</small></button>
+        <button class="choice" data-when="text"><div class="e">🔎</div><b>이 글자가 있으면</b><small>페이지 글자</small></button>
+        <button class="choice" data-when="ocr"><div class="e">🔤</div><b>이 자리에 글자가 보이면</b><small>그림 속 글자(OCR)</small></button>
+        <button class="choice" data-when="url"><div class="e">🔗</div><b>이 주소이면</b><small>특정 페이지</small></button>
+      </div>
+      <div id="wWhenBox" style="margin-top:14px"></div>
+    </div>
+    <!-- 2. 무엇을 -->
+    <div id="w2" class="hide">
+      <div class="q">무엇을 할까요?</div>
+      <ul class="stepcards" id="wSteps"></ul>
+      <div class="hintline hide" id="wNoSteps">아래에서 할 일을 추가하세요. <b>따라하기 녹화</b>가 제일 쉽습니다.</div>
+      <div class="adds" id="wAdds">
+        <button class="main" data-add="rec"><em>●</em> 화면에서 따라하기 (녹화)</button>
+        <button data-add="click_match" id="addClickMatch"><em>🎯</em> 찾은 색 누르기</button>
+        <button data-add="checkout"><em>🛒</em> 무통장입금 자동 진행</button>
+        <button data-add="read"><em>🔤</em> 화면 글자 읽어 입력</button>
+        <button data-add="type"><em>⌨️</em> 글자 입력</button>
+        <button data-add="key"><em>↵</em> 키 누르기</button>
+        <button data-add="wait"><em>⏱</em> 기다리기</button>
+        <button data-add="notify"><em>🔔</em> 알림 보내기</button>
+        <button data-add="reload"><em>⟳</em> 새로고침</button>
+      </div>
+      <div id="wRec" class="hide">
+        <div class="row" style="justify-content:space-between;margin:4px 0 6px"><span class="rec"><i></i> 녹화 중 · 화면을 눌러 직접 해보세요</span>
+          <button class="btn pri sm" id="wRecDone">녹화 끝</button></div>
+        <div id="remoteRec"></div>
+      </div>
+    </div>
+    <!-- 3. 그 다음 -->
+    <div id="w3" class="hide">
+      <div class="q">한 번 하고 나면?</div>
+      <div class="choices">
+        <button class="choice" data-after="continue"><div class="e">🔁</div><b>계속 지켜보기</b><small>또 나오면 또 실행</small></button>
+        <button class="choice" data-after="stop"><div class="e">⏹</div><b>매크로 끝내기</b><small>한 번만 실행</small></button>
+      </div>
+      <label class="chk" id="wRefreshRow"><input type="checkbox" id="wRefresh"> 안 보일 때는 새로고침하며 기다리기</label>
+      <div class="field"><span>이름</span><input type="text" id="wName" placeholder="예: 아이템 구매"></div>
+      <div class="card" style="margin-top:10px"><h2>요약</h2><div id="wSummary" class="small"></div></div>
+      <div class="msg" id="wMsg"></div>
+    </div>
+  </div>
+  <div class="foot"><button class="btn" id="wPrev">이전</button><button class="btn pri" id="wNext">다음</button></div>
+</div>
+
 <div id="toast"></div>
-<dialog id="ruleDlg">
-  <h2 style="margin:0 0 8px">규칙 만들기</h2>
-  <label class="hint">규칙 이름</label>
-  <input type="text" id="rName" placeholder="예: 결재 처리">
-  <div class="hint" style="margin-top:10px">언제 실행할까요?</div>
-  <label class="opt"><input type="radio" name="rWhen" value="color"> 고른 색이 화면에 보일 때 <code id="rColor">-</code>
-    <div class="hint" id="rColorHint">'선택' 모드에서 그 버튼의 색을 먼저 눌러 고르세요.</div>
-    <label class="hint"><input type="checkbox" id="rClickMatch" checked> 첫 클릭을 '찾은 색 위치 클릭'으로 (버튼 위치가 바뀌어도 따라감)</label></label>
-  <label class="opt"><input type="radio" name="rWhen" value="text"> 페이지에 이 글자가 보일 때
-    <input type="text" id="rText" placeholder="예: 결재 대기"></label>
-  <label class="opt"><input type="radio" name="rWhen" value="ocr"> 고른 영역에 이 글자가 보일 때 (화면 글자 인식)
-    <input type="text" id="rOcr" placeholder="예: 승인 요청"></label>
-  <label class="opt"><input type="radio" name="rWhen" value="url"> 주소에 이 글자가 들어 있을 때
-    <input type="text" id="rUrl" placeholder="예: /approval"></label>
-  <div class="hint" style="margin-top:10px">실행한 뒤에는?</div>
-  <label class="opt"><input type="radio" name="rAfter" value="continue" checked> 계속 감시 (다음 건 처리)</label>
-  <label class="opt"><input type="radio" name="rAfter" value="stop"> 업무 종료 (매크로 멈춤)</label>
-  <div id="rMsg" class="msg"></div>
-  <div class="row" style="margin-top:8px;justify-content:flex-end"><button id="rCancel">취소</button><button class="pri" id="rSave">저장</button></div>
-</dialog>
-<dialog id="viewer"><img id="viewerImg" alt=""></dialog>
+<div id="viewer"><img id="viewerImg" alt=""></div>
+<canvas id="cv" hidden></canvas>
 
 <script>
 const $ = id => document.getElementById(id);
-let mode = 'pick', pick = null, region = null, running = false, autoTimer = null, tab = 'status';
-let lastEvent = 0, events = [];
+const $$ = s => [...document.querySelectorAll(s)];
+let running = false, tab = 'home', lastEvent = 0, events = [], rulesInfo = null, settings = {};
+let mode = 'ctl', pick = null, region = null, zoom = 1, onRegion = null, onPick = null;
+let wiz = null;   // 새 매크로 작성 상태
 
+// ───── 공통 ─────
 async function api(path, body) {
-  const opt = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)};
+  const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
   const r = await fetch(path, opt);
   const ct = r.headers.get('Content-Type') || '';
   const data = ct.includes('json') ? await r.json() : await r.blob();
@@ -321,229 +379,276 @@ async function api(path, body) {
   if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
   return data;
 }
-function msg(el, text, ok) { el.textContent = text || ''; el.className = 'msg ' + (ok === false ? 'err' : ok ? 'ok' : ''); }
-function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2500); }
-function hhmm(t) { const d = new Date(t * 1000); return d.toTimeString().slice(0, 8); }
-function ago(sec) {
-  if (sec == null) return '';
-  sec = Math.max(0, Math.round(sec));
-  if (sec < 60) return sec + '초 전';
-  if (sec < 3600) return Math.floor(sec / 60) + '분 전';
-  return Math.floor(sec / 3600) + '시간 ' + Math.floor(sec % 3600 / 60) + '분 전';
-}
-function dur(sec) {
-  sec = Math.round(sec); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
-  return h ? `${h}시간 ${m}분` : m ? `${m}분` : `${sec}초`;
-}
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function msg(e, text, ok) { e.textContent = text || ''; e.className = 'msg ' + (ok === false ? 'err' : ok ? 'ok' : ''); }
+function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(e._t); e._t = setTimeout(() => e.style.display = 'none', 2600); }
+function hhmm(t) { return new Date(t * 1000).toTimeString().slice(0, 5); }
+function ago(s) { if (s == null) return ''; s = Math.max(0, Math.round(s)); return s < 60 ? s + '초 전' : s < 3600 ? Math.floor(s / 60) + '분 전' : Math.floor(s / 3600) + '시간 전'; }
+function dur(s) { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}시간 ${m}분` : m ? `${m}분` : `${s}초`; }
+function normUrl(u) { u = (u || '').trim(); if (u && !/^https?:\/\//i.test(u) && !/^file:/i.test(u)) u = 'https://' + u; return u; }
 
-// ---- 탭 ----
+// 바텀 시트: fields = [{key, label, type, value, options, placeholder}] → 값 객체 / null(취소)
+function sheet(title, {text, fields = [], ok = '확인', cancel = '취소', danger = false} = {}) {
+  return new Promise(res => {
+    const bg = el('div', 'sheet-bg'), s = el('div', 'sheet'); bg.append(s);
+    s.append(el('h3', '', title));
+    if (text) { const p = el('div', 'muted small', text); p.style.whiteSpace = 'pre-line'; s.append(p); }
+    const inputs = {};
+    fields.forEach(f => {
+      const w = el('label', f.type === 'checkbox' ? 'chk' : 'field');
+      let i;
+      if (f.type === 'select') { i = el('select'); f.options.forEach(([v, t]) => { const o = el('option', '', t); o.value = v; i.append(o); }); i.value = f.value ?? f.options[0][0]; }
+      else { i = el('input'); i.type = f.type || 'text'; if (f.type === 'checkbox') i.checked = !!f.value; else i.value = f.value ?? ''; if (f.placeholder) i.placeholder = f.placeholder; }
+      if (f.type === 'checkbox') w.append(i, el('span', '', f.label)); else w.append(el('span', '', f.label), i);
+      s.append(w); inputs[f.key] = i;
+    });
+    const acts = el('div', 'acts'), b1 = el('button', 'btn', cancel), b2 = el('button', 'btn ' + (danger ? 'bad' : 'pri'), ok);
+    if (cancel) acts.append(b1); acts.append(b2); s.append(acts);
+    const done = v => { bg.remove(); res(v); };
+    b1.onclick = () => done(null); bg.onclick = e => { if (e.target === bg) done(null); };
+    b2.onclick = () => { const v = {}; for (const [k, i] of Object.entries(inputs)) v[k] = i.type === 'checkbox' ? i.checked : i.value; done(v); };
+    document.body.append(bg);
+    const first = Object.values(inputs).find(i => i.type === 'text' || i.type === 'number'); if (first) setTimeout(() => first.focus(), 250);
+  });
+}
+function menuSheet(title, text, items) {   // items: [[값, 글자, 빨강?]] → 값 / null
+  return new Promise(res => {
+    const bg = el('div', 'sheet-bg'), s = el('div', 'sheet'); bg.append(s);
+    s.append(el('h3', '', title)); if (text) { const p = el('div', 'muted small', text); p.style.whiteSpace = 'pre-line'; s.append(p); }
+    const done = v => { bg.remove(); res(v); };
+    const list = el('div', 'list'); list.style.marginTop = '12px'; list.style.boxShadow = 'none'; list.style.border = '1px solid var(--line)';
+    items.forEach(([v, t, bad]) => { const b = el('button', 'item', t); if (bad) b.style.color = 'var(--bad)'; b.onclick = () => done(v); list.append(b); });
+    const c = el('button', 'btn wide', '닫기'); c.onclick = () => done(null);
+    s.append(list, c); bg.onclick = e => { if (e.target === bg) done(null); }; document.body.append(bg);
+  });
+}
+const confirmSheet = (title, text, ok = '확인', danger = false) => sheet(title, {text, ok, danger}).then(v => v !== null);
+
+// ───── 탭 ─────
+const TITLES = {home: '홈', macros: '매크로', browser: '브라우저', settings: '설정'};
 function setTab(t) {
-  tab = t;
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
-  document.querySelectorAll('.tab').forEach(s => s.classList.toggle('on', s.id === 't-' + t));
+  tab = t; $('title').textContent = TITLES[t];
+  $$('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  $$('.page').forEach(p => p.classList.toggle('on', p.id === 'p-' + t));
   try { localStorage.setItem('wm_tab', t); } catch (_) {}
-  if (t === 'status') { liveShot(); loadShots(); }
-  if (t === 'screen' && !$('shot').src) shot();
+  if (t === 'home') liveShot();
+  if (t === 'browser') { mountRemote($('remoteHome'), 'ctl'); shot(); }
+  if (t === 'macros') loadRules();
+  if (t === 'settings') { loadConfig(); loadShots(); }
   window.scrollTo(0, 0);
 }
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+$$('nav.tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
 
-// ---- 현황 ----
+// ───── 홈 ─────
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const ICON_STOP = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 async function refreshState() {
   try {
-    const s = await api('/api/state?since=' + lastEvent);
+    const s = await api('/api/state?since=' + lastEvent), m = s.monitor;
     running = s.running;
-    const m = s.monitor;
     $('status').textContent = s.status;
     const paused = running && /일시정지/.test(m.activity);
-    $('pill').className = 'pill' + (paused ? ' pause' : running ? ' run' : (/오류/.test(s.last_result) ? ' err' : ''));
-    $('btnStart').disabled = $('btnDry').disabled = running;
-    $('btnStop').disabled = !running;
-    $('btnLogout').style.display = s.auth ? '' : 'none';
+    $('pill').className = 'pill' + (paused ? ' pause' : running ? ' run' : (/오류/.test(s.last_result || '') ? ' err' : ''));
+    $('power').innerHTML = (running ? ICON_STOP + '중지' : ICON_PLAY + '시작');
+    $('power').classList.toggle('stop', running);
+    $('btnDry').classList.toggle('hide', running);
+    $('btnLogout').classList.toggle('hide', !s.auth);
     $('act').textContent = m.activity;
-    $('since').textContent = running && m.started_at ? `실행 ${dur(m.now - m.started_at)}째` + (s.dry_run ? ' · 시험 실행(클릭 안 함)' : '')
-                                                   : (s.last_result ? '마지막: ' + s.last_result : '대기 중');
-    $('lastCheck').textContent = m.last_check_at ? '마지막 화면 확인 ' + ago(m.now - m.last_check_at) : '';
+    $('since').classList.toggle('hide', !running && !s.last_result);
+    $('since').textContent = running && m.started_at ? `실행 ${dur(m.now - m.started_at)}째` + (s.dry_run ? ' · 시험 실행' : '')
+      : (s.last_result ? '마지막 결과: ' + s.last_result : '대기 중');
     $('nDone').textContent = m.today.done; $('nErr').textContent = m.today.errors; $('nCheck').textContent = m.today.checks;
-    $('tErr').classList.toggle('bad', m.today.errors > 0);
-    const ul = $('rules'); ul.replaceChildren();
-    Object.entries(m.today.rules).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
-      const li = el('li'); li.append(el('span', '', k), el('b', '', v + '건')); ul.append(li);
-    });
-    const hist = Object.entries(m.history || {}).filter(([d]) => d !== new Date(m.now * 1000).toISOString().slice(0, 10)).slice(-6);
-    $('hist').textContent = hist.length ? '지난 기록: ' + hist.map(([d, v]) => `${d.slice(5)} ${v.done}건`).join(' · ') : '';
-    if (m.last_error) {
-      $('errBox').style.display = 'block';
-      const box = $('errText'); box.replaceChildren(el('div', 'hint', hhmm(m.last_error.t) + ' (' + ago(m.now - m.last_error.t) + ')'), el('div', '', m.last_error.text));
-      if (m.last_error.shot) box.append(shotLink(m.last_error.shot, '📷 그때 화면 보기'));
-    } else $('errBox').style.display = 'none';
-    if (m.events.length) {
-      events = events.concat(m.events).slice(-150); lastEvent = events[events.length - 1].id; renderEvents();
-      if (m.events.some(e => e.shot || ['stop', 'end', 'pause'].includes(e.kind))) loadShots();
-    }
+    $('sErr').classList.toggle('bad', m.today.errors > 0);
+    $('todayRules').textContent = Object.entries(m.today.rules).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}건`).join(' · ');
+    const eb = $('errBanner');
+    if (m.last_error && m.now - m.last_error.t < 3600) {
+      eb.classList.remove('hide'); eb.replaceChildren(el('b', '', '최근 오류 · ' + ago(m.now - m.last_error.t)), el('div', '', m.last_error.text));
+      if (m.last_error.shot) eb.append(shotLink(m.last_error.shot, '📷 그때 화면'));
+    } else eb.classList.add('hide');
+    if (m.events.length) { events = events.concat(m.events).slice(-150); lastEvent = events[events.length - 1].id; renderEvents(); }
     const lg = $('log'), atBottom = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 10;
     lg.textContent = s.log.join('\n'); if (atBottom) lg.scrollTop = lg.scrollHeight;
   } catch (e) { $('status').textContent = '연결 끊김'; $('pill').className = 'pill err'; }
 }
 function shotLink(name, label) {
   const a = el('a', '', label || '📷'); a.href = '/shots/' + encodeURIComponent(name);
-  a.onclick = ev => { ev.preventDefault(); $('viewerImg').src = a.href; $('viewer').showModal(); };
+  a.onclick = ev => { ev.preventDefault(); $('viewerImg').src = a.href; $('viewer').style.display = 'flex'; };
   return a;
 }
-$('viewer').onclick = () => $('viewer').close();
+$('viewer').onclick = () => $('viewer').style.display = 'none';
 function renderEvents() {
   const ul = $('events'); ul.replaceChildren();
-  events.slice().reverse().slice(0, 60).forEach(e => {
-    const li = el('li', e.kind); li.append(el('time', '', hhmm(e.t)));
-    const tx = el('span', 'tx', e.text); if (e.shot) { tx.append(' '); tx.append(shotLink(e.shot)); }
-    li.append(tx); ul.append(li);
+  events.slice().reverse().slice(0, 40).forEach(e => {
+    const li = el('li', e.kind), x = el('span', 'x', e.text);
+    if (e.shot) { x.append(' '); x.append(shotLink(e.shot)); }
+    li.append(el('time', '', hhmm(e.t)), x); ul.append(li);
   });
-  if (!events.length) ul.append(el('li', 'hint', '아직 기록이 없습니다'));
+  if (!events.length) ul.append(el('li', 'muted', '아직 기록이 없습니다'));
 }
 renderEvents();
-async function loadShots() {
-  try {
-    const r = await api('/api/shots'), box = $('shots'); box.replaceChildren();
-    if (!r.shots.length) box.append(el('div', 'hint', '없음'));
-    r.shots.slice(0, 12).forEach(s => {
-      const f = el('figure'), a = shotLink(s.name, ''), img = el('img'); img.loading = 'lazy'; img.src = '/shots/' + encodeURIComponent(s.name);
-      a.append(img); f.append(a, el('figcaption', '', s.name.replace('.png', ''))); box.append(f);
-    });
-  } catch (_) {}
-}
-$('btnShots').onclick = loadShots;
-
 let liveBusy = false;
 async function liveShot() {
-  if (liveBusy || tab !== 'status' || document.hidden || !$('liveOn').checked) return;
+  if (liveBusy || tab !== 'home' || document.hidden) return;
   liveBusy = true;
   try {
     const b = await api('/api/screenshot'), img = $('live'), old = img.src;
     img.onload = () => { if (old.startsWith('blob:')) URL.revokeObjectURL(old); };
-    img.src = URL.createObjectURL(b); $('liveAt').textContent = '갱신 ' + new Date().toTimeString().slice(0, 8);
-  } catch (e) { $('liveAt').textContent = '화면을 가져오지 못함: ' + e.message; }
+    img.src = URL.createObjectURL(b); $('liveAt').textContent = new Date().toTimeString().slice(0, 8);
+  } catch (e) { $('liveAt').textContent = '화면 없음'; }
   liveBusy = false;
 }
+$('live').onclick = () => { if ($('live').src) { $('viewerImg').src = $('live').src; $('viewer').style.display = 'flex'; } };
 setInterval(() => { if (running) liveShot(); }, 3000);
-$('liveOn').onchange = liveShot;
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshState(); liveShot(); } });
-
 async function start(dry) {
-  try { await api('/api/start', {dry_run:dry}); toast(dry ? '시험 실행 시작 (클릭 안 함)' : '매크로 시작'); refreshState(); setTimeout(liveShot, 1500); }
-  catch (e) { alert(e.message); }
+  try { await api('/api/start', {dry_run: dry}); toast(dry ? '시험 실행 시작 (누르지 않음)' : '매크로 시작'); refreshState(); setTimeout(liveShot, 1500); }
+  catch (e) { sheet('시작할 수 없습니다', {text: e.message, cancel: null}); }
 }
-$('btnStart').onclick = () => { if (confirm('매크로를 시작할까요? 실제로 클릭합니다.')) start(false); };
+$('power').onclick = async () => {
+  if (running) { if (await confirmSheet('매크로를 멈출까요?', '', '멈추기', true)) { await api('/api/stop', {}); toast('멈추는 중…'); refreshState(); } }
+  else if (await confirmSheet('매크로를 시작할까요?', '조건이 맞으면 실제로 누르고 입력합니다.', '시작')) start(false);
+};
 $('btnDry').onclick = () => start(true);
-$('btnStop').onclick = async () => { if (!confirm('매크로를 중지할까요?')) return; await api('/api/stop', {}); toast('중지 요청함'); refreshState(); };
 $('btnLogout').onclick = async () => { await api('/api/logout', {}); location.href = '/login'; };
 setInterval(refreshState, 2000); refreshState();
 
-// ---- 설정 ----
-async function loadConfig() {
-  const c = await api('/api/config');
-  $('yaml').value = c.yaml; $('cfgPath').textContent = '설정 파일: ' + c.path;
-  const s = c.settings || {};
-  if (s.error) msg($('yamlMsg'), '현재 설정 오류: ' + s.error, false);
-  $('url').value = s.url || ''; $('w').value = s.width || 1920; $('h').value = s.height || 1080; $('interval').value = s.interval || 2;
-  $('refresh').checked = !!s.refresh;
+function renderGuide() {
+  if (!rulesInfo) return;
+  const real = !rulesInfo.demo, has = rulesInfo.rules.some(r => r.after !== 'stop');
+  $('guide').classList.toggle('hide', real && has);
+  const ul = $('guideList'); ul.replaceChildren();
+  [[real, '사이트 정하기', 'settings', '설정에서 주소 입력'], [real && has, '필요하면 로그인', 'browser', '브라우저에서 로그인 후 "로그인 상태 저장"'],
+   [has, '매크로 만들기', 'macros', '＋ 새 매크로'], [false, '시작', null, '홈에서 ▶ 시작']].forEach(([ok, t, go, sub], i) => {
+    const li = el('li', ok ? 'done' : ''), n = el('span', 'n', ok ? '✓' : i + 1), tx = el('span', '');
+    tx.append(el('b', '', t), el('div', 'small muted', sub)); li.append(n, tx);
+    if (go) { li.style.cursor = 'pointer'; li.onclick = () => setTab(go); }
+    ul.append(li);
+  });
 }
-$('btnSaveSite').onclick = async () => {
-  try {
-    const r = await api('/api/settings', {url:$('url').value.trim(), width:+$('w').value, height:+$('h').value, interval:+$('interval').value, refresh:$('refresh').checked});
-    $('yaml').value = r.yaml; msg($('siteMsg'), r.message, true); shot();
-  } catch (e) { msg($('siteMsg'), e.message, false); }
-};
-$('btnSaveYaml').onclick = async () => {
-  try { const r = await api('/api/config', {yaml:$('yaml').value}); msg($('yamlMsg'), r.message, true); loadConfig(); }
-  catch (e) { msg($('yamlMsg'), e.message, false); }
-};
-$('btnRevert').onclick = () => loadConfig().then(() => msg($('yamlMsg'), '저장된 내용으로 되돌림', true));
 
-// ---- 화면 ----
+// ───── 원격 화면 (브라우저 탭·녹화에서 같이 씀) ─────
+function mountRemote(parent, m, opts = {}) {
+  parent.append($('remote'));
+  setMode(m);
+  $('modeSeg').classList.toggle('hide', !!opts.lockMode);
+  $('ctlBar').classList.toggle('hide', !!opts.noCtl);
+  $('secretRow').classList.toggle('hide', !(wiz && wiz.recording));
+  drawMarks();
+}
+function setMode(m) {
+  mode = m; $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $('modeHint').textContent = {ctl: '화면을 누르면 실제로 클릭됩니다. 두 손가락으로 확대.',
+    pick: '찾을 색을 누르거나, 손가락으로 끌어 영역을 고르세요.', region: '읽을 글자를 손가락으로 끌어 감싸세요.'}[m];
+}
+$$('#modeSeg button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+let shotBusy = false;
 async function shot() {
+  if (shotBusy) return; shotBusy = true; $('busy').style.display = 'block';
   try {
-    msg($('shotMsg'), '불러오는 중…');
-    const b = await api('/api/screenshot');
-    const url = URL.createObjectURL(b), img = $('shot'), old = img.src;
-    img.onload = () => { if (old.startsWith('blob:')) URL.revokeObjectURL(old); drawMarks(); };
-    img.src = url; msg($('shotMsg'), '');
+    const b = await api('/api/screenshot'), img = $('shot'), old = img.src;
+    img.onload = () => { if (old.startsWith('blob:')) URL.revokeObjectURL(old); img.classList.remove('hide'); $('viewEmpty').classList.add('hide'); drawMarks(); };
+    img.src = URL.createObjectURL(b);
     if (b.pageUrl && document.activeElement !== $('addr')) $('addr').value = b.pageUrl;
-  } catch (e) { msg($('shotMsg'), '화면을 가져오지 못했습니다: ' + e.message, false); }
+  } catch (e) { $('viewEmpty').textContent = '화면을 가져오지 못했습니다: ' + e.message; $('viewEmpty').classList.remove('hide'); }
+  $('busy').style.display = 'none'; shotBusy = false;
 }
-function setAuto() { clearInterval(autoTimer); if ($('auto').checked) autoTimer = setInterval(() => { if (tab === 'screen' && !document.hidden) shot(); }, 2000); }
-$('auto').onchange = setAuto;
-$('btnShot').onclick = shot;
+setInterval(() => { if (!document.hidden && !running && (tab === 'browser' || (wiz && $('remote').isConnected && !$('wiz').classList.contains('hide')))) shot(); }, 4000);
 
-function toImg(ev) {   // 화면 좌표 → 원본 이미지 좌표 (이미지 밖이면 가장자리로)
-  const img = $('shot'), r = img.getBoundingClientRect();
-  const sx = img.naturalWidth / r.width, sy = img.naturalHeight / r.height;
-  const cl = (v, m) => Math.min(m - 1, Math.max(0, v));
-  return {x: cl(Math.round((ev.clientX - r.left) * sx), img.naturalWidth), y: cl(Math.round((ev.clientY - r.top) * sy), img.naturalHeight)};
+async function act(body) {
+  recordAct(body);
+  try {
+    const r = await api('/api/browser', body);
+    if (r.url) $('addr').value = r.url;
+    if (body.action === 'save_session') toast('로그인 상태 저장됨');
+    setTimeout(shot, 350); setTimeout(shot, 1500);
+  } catch (e) { toast(e.message); }
+}
+$('btnType').onclick = () => {
+  const t = $('typeText').value; if (!t) return;
+  act({action: 'type', text: t, secret: $('secretType').checked}); $('typeText').value = ''; $('secretType').checked = false;
+};
+$('typeText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btnType').click(); } });
+$$('[data-key]').forEach(b => b.onclick = () => act({action: 'press', key: b.dataset.key}));
+$$('[data-scroll]').forEach(b => b.onclick = () => act({action: 'scroll', dy: +b.dataset.scroll}));
+$('btnHome').onclick = () => act({action: 'home'});
+$('navBack').onclick = () => act({action: 'back'});
+$('navReload').onclick = () => act({action: 'reload'});
+$('navGo').onclick = () => { const u = normUrl($('addr').value); if (u) { $('addr').value = u; $('addr').blur(); act({action: 'goto', url: u}); } };
+$('addr').addEventListener('keydown', e => { if (e.key === 'Enter') $('navGo').click(); });
+$('btnSession').onclick = () => act({action: 'save_session'});
+$('btnSetSite').onclick = async () => {
+  const u = normUrl($('addr').value); if (!u) return;
+  if (!await confirmSheet('시작 사이트로 저장할까요?', u + '\n\n매크로는 항상 이 주소에서 시작합니다.', '저장')) return;
+  try { const r = await api('/api/settings', {url: u}); toast(r.message); loadConfig(); loadRules(); } catch (e) { toast(e.message); }
+};
+$('btnTest').onclick = async () => {
+  try {
+    const r = await api('/api/test', {});
+    if (!r.rule) return sheet('맞는 매크로 없음', {text: '지금 화면에서는 아무것도 누르지 않습니다.', cancel: null});
+    const pos = Object.values(r.positions || {})[0];
+    if (pos && $('shot').naturalWidth) { pick = {x: pos[0], y: pos[1], color: colorAt(pos[0], pos[1])}; drawMarks(); }
+    sheet(`'${r.rule}' 실행됨`, {text: (pos ? `누를 위치 (${pos.join(', ')}) — 화면에 ○ 표시` : '') +
+      (Object.keys(r.vars || {}).length ? '\n읽은 값: ' + Object.entries(r.vars).map(([k, v]) => `${k}=${v}`).join(', ') : ''), cancel: null});
+  } catch (e) { toast(e.message); }
+};
+
+function toImg(ev) {
+  const img = $('shot'), r = img.getBoundingClientRect(), cl = (v, m) => Math.min(m - 1, Math.max(0, v));
+  return {x: cl(Math.round((ev.clientX - r.left) * img.naturalWidth / r.width), img.naturalWidth),
+          y: cl(Math.round((ev.clientY - r.top) * img.naturalHeight / r.height), img.naturalHeight)};
 }
 function colorAt(x, y) {
   const img = $('shot'), cv = $('cv');
-  if (cv.width !== img.naturalWidth || cv._src !== img.src) {
-    cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0); cv._src = img.src;
-  }
-  const d = cv.getContext('2d', {willReadFrequently:true}).getImageData(x, y, 1, 1).data;
+  if (cv.width !== img.naturalWidth || cv._src !== img.src) { cv.width = img.naturalWidth; cv.height = img.naturalHeight; cv.getContext('2d').drawImage(img, 0, 0); cv._src = img.src; }
+  const d = cv.getContext('2d', {willReadFrequently: true}).getImageData(x, y, 1, 1).data;
   return '#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 function drawMarks() {
   const img = $('shot'); if (!img.naturalWidth) return;
-  const k = img.getBoundingClientRect().width / img.naturalWidth;
-  const m = $('mark'), s = $('sel');
-  if (pick) { m.style.display = 'block'; m.style.left = pick.x * k + 'px'; m.style.top = pick.y * k + 'px'; } else m.style.display = 'none';
-  if (region) { s.style.display = 'block'; s.style.left = region[0]*k+'px'; s.style.top = region[1]*k+'px'; s.style.width = (region[2]-region[0])*k+'px'; s.style.height = (region[3]-region[1])*k+'px'; } else s.style.display = 'none';
+  const k = img.getBoundingClientRect().width / img.naturalWidth, m = $('mk'), s = $('sel');
+  if (pick && mode !== 'ctl') { m.style.display = 'block'; m.style.left = pick.x * k + 'px'; m.style.top = pick.y * k + 'px'; } else m.style.display = 'none';
+  if (region && mode !== 'ctl') { Object.assign(s.style, {display: 'block', left: region[0] * k + 'px', top: region[1] * k + 'px', width: (region[2] - region[0]) * k + 'px', height: (region[3] - region[1]) * k + 'px'}); }
+  else s.style.display = 'none';
+  const p = $('picked');
+  p.classList.toggle('hide', mode === 'ctl' || (!pick && !region));
+  $('sw').style.background = pick ? pick.color : 'transparent';
+  $('pickedTx').textContent = [pick ? `색 ${pick.color}` : '', region ? `영역 ${region[2] - region[0]}×${region[3] - region[1]}` : ''].filter(Boolean).join(' · ');
+  $('btnReadRegion').classList.toggle('hide', !region || mode === 'region');
 }
 window.addEventListener('resize', drawMarks);
-
-// ---- 확대(핀치 줌) ----
-let zoom = 1;
-function applyZoom(z, cx, cy) {   // cx, cy: 고정할 점(뷰포트 좌표). 없으면 가운데
-  const wrap = $('shotWrap'), img = $('shot'), r = wrap.getBoundingClientRect();
-  z = Math.min(6, Math.max(1, z));
-  if (cx == null) { cx = r.left + wrap.clientWidth / 2; cy = r.top + wrap.clientHeight / 2; }
-  const px = (wrap.scrollLeft + cx - r.left) / zoom, py = (wrap.scrollTop + cy - r.top) / zoom;
-  zoom = z;
-  img.style.width = z === 1 ? '100%' : (wrap.clientWidth * z) + 'px';
-  wrap.scrollLeft = px * z - (cx - r.left); wrap.scrollTop = py * z - (cy - r.top);
-  $('zoomPct').textContent = Math.round(z * 100) + '%';
-  drawMarks();
+function tapFx(ev) { const d = el('div', 'tap'), r = $('view').getBoundingClientRect(); d.style.left = (ev.clientX - r.left + $('view').scrollLeft) + 'px'; d.style.top = (ev.clientY - r.top + $('view').scrollTop) + 'px'; $('view').append(d); setTimeout(() => d.remove(), 600); }
+function previewSel(r) {
+  if (!r) return drawMarks();
+  const k = $('shot').getBoundingClientRect().width / $('shot').naturalWidth;
+  Object.assign($('sel').style, {display: 'block', left: r[0] * k + 'px', top: r[1] * k + 'px', width: (r[2] - r[0]) * k + 'px', height: (r[3] - r[1]) * k + 'px'});
 }
-$('zIn').onclick = () => applyZoom(zoom * 1.5);
-$('zOut').onclick = () => applyZoom(zoom / 1.5);
-$('zFit').onclick = () => applyZoom(1);
-$('shotWrap').addEventListener('wheel', ev => {
-  if (!ev.ctrlKey) return;
-  ev.preventDefault(); applyZoom(zoom * (ev.deltaY < 0 ? 1.2 : 1 / 1.2), ev.clientX, ev.clientY);
-}, {passive: false});
-
-const ptrs = new Map();
-let down = null, pinch = null;
+function applyZoom(z, cx, cy) {
+  const w = $('view'), img = $('shot'), r = w.getBoundingClientRect();
+  z = Math.min(6, Math.max(1, z));
+  if (cx == null) { cx = r.left + w.clientWidth / 2; cy = r.top + w.clientHeight / 2; }
+  const px = (w.scrollLeft + cx - r.left) / zoom, py = (w.scrollTop + cy - r.top) / zoom;
+  zoom = z; img.style.width = z === 1 ? '100%' : (w.clientWidth * z) + 'px';
+  w.scrollLeft = px * z - (cx - r.left); w.scrollTop = py * z - (cy - r.top); drawMarks();
+}
+$('view').addEventListener('wheel', ev => { if (!ev.ctrlKey) return; ev.preventDefault(); applyZoom(zoom * (ev.deltaY < 0 ? 1.2 : 1 / 1.2), ev.clientX, ev.clientY); }, {passive: false});
+const ptrs = new Map(); let down = null, pinch = null;
 function mid() { const [a, b] = [...ptrs.values()]; return {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1}; }
 $('shot').addEventListener('pointerdown', ev => {
   if (!$('shot').naturalWidth) return;
   ev.preventDefault(); try { $('shot').setPointerCapture(ev.pointerId); } catch (_) {}
   ptrs.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
-  if (ptrs.size === 2) {                 // 두 손가락 → 확대·이동, 선택 취소
-    down = null; previewSel(null);
-    const m = mid(), w = $('shotWrap');
-    pinch = {d0: m.d, z0: zoom, x: m.x, y: m.y, sl: w.scrollLeft, st: w.scrollTop};
-  } else if (ptrs.size === 1 && !pinch) down = toImg(ev);
+  if (ptrs.size === 2) { down = null; previewSel(null); const m = mid(); pinch = {d0: m.d, z0: zoom, x: m.x, y: m.y}; }
+  else if (ptrs.size === 1 && !pinch) down = toImg(ev);
 });
 $('shot').addEventListener('pointermove', ev => {
   if (!ptrs.has(ev.pointerId)) return;
   ptrs.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
   if (pinch && ptrs.size === 2) {
-    const m = mid(), w = $('shotWrap');
-    applyZoom(pinch.z0 * m.d / pinch.d0, m.x, m.y);
-    w.scrollLeft += pinch.x - m.x; w.scrollTop += pinch.y - m.y;   // 두 손가락 이동 = 화면 이동
-    pinch.x = m.x; pinch.y = m.y;
-  } else if (down && mode === 'pick') {
+    const m = mid(), w = $('view'); applyZoom(pinch.z0 * m.d / pinch.d0, m.x, m.y);
+    w.scrollLeft += pinch.x - m.x; w.scrollTop += pinch.y - m.y; pinch.x = m.x; pinch.y = m.y;
+  } else if (down && mode !== 'ctl') {
     const p = toImg(ev);
-    if (Math.abs(p.x - down.x) > 6 || Math.abs(p.y - down.y) > 6)
-      previewSel([Math.min(down.x, p.x), Math.min(down.y, p.y), Math.max(down.x, p.x), Math.max(down.y, p.y)]);
+    if (Math.abs(p.x - down.x) > 6 || Math.abs(p.y - down.y) > 6) previewSel([Math.min(down.x, p.x), Math.min(down.y, p.y), Math.max(down.x, p.x), Math.max(down.y, p.y)]);
   }
 });
 function endPtr(ev) { ptrs.delete(ev.pointerId); if (!ptrs.size) pinch = null; }
@@ -552,305 +657,320 @@ $('shot').addEventListener('pointerup', async ev => {
   const wasPinch = !!pinch; endPtr(ev);
   if (!down || wasPinch) { down = null; return; }
   const up = toImg(ev), d0 = down; down = null;
-  if (mode === 'ctl') {
-    recordAct({action:'click', x:up.x, y:up.y});
-    try { const r = await api('/api/browser', {action:'click', x:up.x, y:up.y}); $('curUrl').textContent = r.url; if (r.url) $('addr').value = r.url; setTimeout(shot, 300); }
-    catch (e) { msg($('shotMsg'), e.message, false); }
-    return;
-  }
+  if (mode === 'ctl') { tapFx(ev); act({action: 'click', x: up.x, y: up.y}); return; }
   if (Math.abs(up.x - d0.x) > 6 && Math.abs(up.y - d0.y) > 6) {
     setRegion([Math.min(d0.x, up.x), Math.min(d0.y, up.y), Math.max(d0.x, up.x), Math.max(d0.y, up.y)]);
-  } else {
-    const c = colorAt(up.x, up.y);
-    pick = {x: up.x, y: up.y, color: c};
-    $('pxy').textContent = up.x + ', ' + up.y; $('pcol').textContent = c; $('sw').style.background = c;
-    $('insColor').disabled = $('insClick').disabled = false;
+  } else if (mode === 'pick') {
+    pick = {x: up.x, y: up.y, color: colorAt(up.x, up.y)}; drawMarks();
+    if (onPick) onPick(pick);
   }
-  drawMarks();
 });
-function previewSel(r) {
-  const s = $('sel'), img = $('shot');
-  if (!r) { drawMarks(); return; }
-  const k = img.getBoundingClientRect().width / img.naturalWidth;
-  s.style.display = 'block'; s.style.left = r[0]*k+'px'; s.style.top = r[1]*k+'px'; s.style.width = (r[2]-r[0])*k+'px'; s.style.height = (r[3]-r[1])*k+'px';
-}
-
-// ---- 영역: 글자를 자르는지 점검 ----
 function setRegion(r) {
-  region = r; lastOcr = '';
-  $('preg').textContent = '[' + region.join(', ') + ']';
-  $('insRegion').disabled = $('btnOcr').disabled = $('insOcr').disabled = $('insRead').disabled = false;
-  drawMarks(); checkRegion();
-}
-function showCuts(cuts) {
-  const w = $('regWarn');
-  if (cuts && cuts.length) {
-    $('regWarnText').textContent = `⚠ 영역이 글자를 자르고 있습니다 (${cuts.join('·')}) — 잘못 읽힐 수 있어요`;
-    w.style.display = 'flex';
-  } else w.style.display = 'none';
-}
-let regionSeq = 0;
-async function checkRegion() {
-  const seq = ++regionSeq;
-  try { const r = await api('/api/region', {region}); if (seq === regionSeq) { showCuts(r.cuts); region._fit = r.suggested; } }
-  catch (_) {}
+  region = r; drawMarks(); $('regWarn').classList.add('hide');
+  api('/api/region', {region}).then(x => {
+    if (x.cuts && x.cuts.length) { $('regWarnTx').textContent = `⚠ 영역이 글자를 자르고 있어요 (${x.cuts.join('·')})`; $('regWarn').classList.remove('hide'); }
+  }).catch(() => {});
+  if (onRegion) onRegion(region);
 }
 $('btnFit').onclick = async () => {
   try {
     const r = await api('/api/region', {region});
-    if (r.unfixed && r.unfixed.length) { toast('자동으로 못 맞췄습니다. 조금 더 넓게 다시 그려 보세요'); return; }
-    setRegion(r.suggested); toast('영역을 글자에 맞췄습니다');
-    if ($('ocrOut').style.display === 'block') $('btnOcr').click();
+    if (r.unfixed && r.unfixed.length) return toast('자동으로 못 맞췄어요. 조금 넓게 다시 그려 보세요');
+    setRegion(r.suggested); toast('글자에 맞췄습니다');
   } catch (e) { toast(e.message); }
 };
-
-function setMode(m) {
-  mode = m; $('mPick').classList.toggle('active', m === 'pick'); $('mCtl').classList.toggle('active', m === 'ctl');
-  $('ctlRow').style.display = m === 'ctl' ? 'flex' : 'none';
-  $('modeHint').textContent = m === 'ctl'
-    ? '조작: 화면을 누르면 서버 브라우저에서 실제로 클릭됩니다. 로그인 후 "로그인 상태 저장". (매크로 중지 상태에서만)'
-    : '선택: 누르면 좌표·색, 드래그하면 영역을 고릅니다. 아래 + 버튼으로 설정에 넣습니다.';
-}
-setMode('pick');
-$('mPick').onclick = () => setMode('pick'); $('mCtl').onclick = () => setMode('ctl');
-
-async function act(body) {
-  recordAct(body);
-  try { const r = await api('/api/browser', body); $('curUrl').textContent = r.url; if (r.url) $('addr').value = r.url; msg($('shotMsg'), body.action === 'save_session' ? '로그인 상태 저장됨' : '', true); setTimeout(shot, 300); }
-  catch (e) { msg($('shotMsg'), e.message, false); }
-}
-$('btnType').onclick = () => {
-  const secret = $('secretType').checked;
-  act({action:'type', text:$('typeText').value, secret});
-  $('typeText').value = ''; $('secretType').checked = false;
-};
-$('typeText').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnType').click(); });
-document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => act({action:'press', key:b.dataset.key}));
-$('btnUp').onclick = () => act({action:'scroll', dy:-400});
-$('btnDown').onclick = () => act({action:'scroll', dy:400});
-$('btnHome').onclick = () => act({action:'home'});
-$('btnSession').onclick = () => act({action:'save_session'});
-
-$('btnTest').onclick = async () => {
-  try {
-    const r = await api('/api/test', {});
-    if (!r.rule) msg($('shotMsg'), '지금 화면에 맞는 규칙이 없습니다 → 아무것도 누르지 않습니다.');
-    else {
-      const pos = Object.entries(r.positions || {}).map(([k, v]) => k + ' (' + v.join(', ') + ')').join(', ');
-      const vars = Object.entries(r.vars || {}).map(([k, v]) => k + '=' + JSON.stringify(v)).join(', ');
-      msg($('shotMsg'), `맞는 규칙: "${r.rule}" → 패턴 "${r.pattern}"` + (pos ? ' · 위치 ' + pos : '') + (vars ? ' · 읽은 값 ' + vars : ''), true);
-      const first = Object.values(r.positions || {})[0];
-      if (first && $('shot').naturalWidth) {
-        pick = {x:first[0], y:first[1], color:colorAt(first[0], first[1])};
-        $('pxy').textContent = pick.x + ', ' + pick.y; $('pcol').textContent = pick.color; $('sw').style.background = pick.color;
-        $('insColor').disabled = $('insClick').disabled = false; drawMarks();
-      }
-    }
-  } catch (e) { msg($('shotMsg'), e.message, false); }
+$('btnReadRegion').onclick = async () => {
+  try { const r = await api('/api/ocr', {region}); sheet('읽은 글자', {text: (r.text || '(없음)') + (r.text_eng ? '\n영문 모드: ' + r.text_eng : ''), cancel: null}); }
+  catch (e) { toast(e.message); }
 };
 
-// ---- 설정에 끼워 넣기 ----
-function insertLine(text) {
-  const ta = $('yaml'), v = ta.value, pos = ta.selectionEnd;
-  let eol = v.indexOf('\n', pos); if (eol < 0) eol = v.length;
-  const lineStart = v.lastIndexOf('\n', pos - 1) + 1;
-  const indent = (v.slice(lineStart, eol).match(/^\s*/) || [''])[0];
-  const ins = '\n' + indent + text;
-  ta.value = v.slice(0, eol) + ins + v.slice(eol);
-  ta.selectionStart = ta.selectionEnd = eol + ins.length;
-  msg($('yamlMsg'), '넣었습니다. 위치를 확인하고 "검사하고 저장"을 누르세요.');
-  toast('설정 탭 편집기에 넣었습니다');
-}
-$('insColor').onclick = () => insertLine(`- {color: "${pick.color}", tolerance: 15${region ? ', region: [' + region.join(', ') + ']' : ''}}`);
-$('insClick').onclick = () => insertLine(`- {do: click, x: ${pick.x}, y: ${pick.y}}`);
-$('insRegion').onclick = () => insertLine(`region: [${region.join(', ')}]`);
-let lastOcr = '';
-$('btnOcr').onclick = async () => {
-  const out = $('ocrOut'); out.style.display = 'block'; out.textContent = '읽는 중…';
-  try {
-    const r = await api('/api/ocr', {region}); lastOcr = r.text;
-    out.textContent = '읽은 글자: ' + (r.text || '(없음)') + (r.text_eng ? '\n영어 모드: ' + r.text_eng + '  ← 영문·숫자 코드는 실제 실행 때 이쪽으로 다시 읽습니다' : '');
-    showCuts(r.cuts);
-  }
-  catch (e) { out.textContent = e.message; }
-};
-function ocrGuess() { return (lastOcr.split('\n')[0] || '찾을 글자').replace(/"/g, ''); }
-$('insOcr').onclick = () => insertLine(`- {ocr: "${ocrGuess()}", region: [${region.join(', ')}]}`);
-$('insRead').onclick = () => {
-  const name = prompt('읽은 값을 담을 이름 (입력할 때 {var:이름} 으로 사용)', '값');
-  if (name) insertLine(`- {do: read, region: [${region.join(', ')}], as: "${name.replace(/"/g, '')}"}`);
-};
-
-// ---- 주소창 ----
-function normUrl(u) { u = u.trim(); if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u; return u; }
-$('navGo').onclick = () => { const u = normUrl($('addr').value); if (u) { $('addr').value = u; act({action:'goto', url:u}); } };
-$('addr').addEventListener('keydown', e => { if (e.key === 'Enter') $('navGo').click(); });
-$('navBack').onclick = () => act({action:'back'});
-$('navFwd').onclick = () => act({action:'forward'});
-$('navReload').onclick = () => act({action:'reload'});
-async function saveSite(url, msgEl) {
-  const r = await api('/api/settings', {url, width:+$('w').value || 1920, height:+$('h').value || 1080, interval:+$('interval').value || 2});
-  msg(msgEl, r.message, true); toast(r.message);
-  await loadConfig(); await loadRules(); setTimeout(shot, 500);
-}
-$('btnSetSite').onclick = async () => {
-  const u = normUrl($('addr').value);
-  if (!u) return toast('주소가 없습니다');
-  if (!confirm(u + '\n\n이 주소를 업무 사이트(매크로 시작 주소)로 저장할까요?')) return;
-  try { await saveSite(u, $('shotMsg')); } catch (e) { msg($('shotMsg'), e.message, false); }
-};
-$('btnSetup').onclick = async () => {
-  const u = normUrl($('setupUrl').value);
-  if (!u) return msg($('setupMsg'), '주소를 입력하세요', false);
-  try { msg($('setupMsg'), '여는 중…'); await saveSite(u, $('setupMsg')); setTab('screen'); setMode('ctl'); }
-  catch (e) { msg($('setupMsg'), e.message, false); }
-};
-
-// ---- 녹화 ----
-let rec = null;   // {steps:[], last:시각}
-function recordAct(b) {
-  if (!rec) return;
-  const now = Date.now(), gap = (now - rec.last) / 1000; rec.last = now;
-  let step = null;
-  if (b.action === 'click') step = {do:'click', x:b.x, y:b.y};
-  else if (b.action === 'type') step = b.secret ? null : {do:'type', text:b.text};
-  else if (b.action === 'press') step = {do:'press', key:b.key};
-  else if (b.action === 'scroll') step = {do:'scroll', dy:b.dy};
-  else if (b.action === 'goto') step = {do:'goto', url:b.url};
-  else if (b.action === 'reload') step = {do:'reload'};
-  if (b.action === 'type' && b.secret) toast('비밀번호 입력은 녹화하지 않았습니다');
-  if (!step) return;
-  if (rec.steps.length && gap > 1.2) rec.steps.push({do:'wait', sec: Math.min(3, Math.round(gap * 2) / 2)});
-  rec.steps.push(step); renderRec();
-}
-function stepText(st) {
-  const v = st.do === 'type' && /^\{var:(.+)\}$/.exec(st.text);
-  if (v) return `읽은 값 입력 (${v[1]})`;
-  return ({click:`클릭 (${st.x}, ${st.y})`, type:`입력 '${st.text}'`, press:`키 ${st.key}`, scroll:`스크롤 ${st.dy > 0 ? '아래' : '위'}`,
-           goto:`이동 ${st.url}`, reload:'새로고침', wait:`대기 ${st.sec}초`,
-           read:`글자 읽기 [${(st.region || []).join(', ')}] → ${st.as}`})[st.do] || st.do;
-}
-function renderRec() {
-  const ol = $('recList'); ol.replaceChildren();
-  rec.steps.forEach((st, i) => {
-    const li = el('li', '', stepText(st)), del = el('button', '', '✕');
-    del.onclick = () => { rec.steps.splice(i, 1); renderRec(); };
-    li.append(del); ol.append(li);
-  });
-  $('recCount').textContent = rec.steps.filter(s => s.do !== 'wait').length;
-}
-$('btnRec').onclick = () => {
-  if (rec) return;
-  rec = {steps: [], last: Date.now()};
-  $('recBox').style.display = 'block'; $('btnRec').classList.add('on'); $('btnRec').textContent = '● 녹화 중';
-  setMode('ctl'); renderRec(); toast('녹화 시작: 조작 모드에서 평소처럼 해보세요');
-};
-const READ_KIND = {kor: {lang: 'kor+eng', psm: 6}, eng: {lang: 'eng', psm: 7},
-                   num: {lang: 'eng', psm: 7, chars: '0123456789'}};
-$('recRead').onclick = async () => {
-  if (!rec) return;
-  if (!region) return toast("'선택' 모드에서 읽을 글자를 드래그하세요");
-  const k = READ_KIND[$('readKind').value];
-  let r;
-  try { toast('읽는 중…'); r = await api('/api/ocr', {region, ...k}); } catch (e) { return toast(e.message); }
-  const text = (r.text || '').trim();
-  if (!text) return toast('글자를 못 읽었습니다. 영역을 조금 넓게 다시 그려 보세요');
-  if (text.includes('\n')) return toast('여러 줄이 읽혔습니다. 입력할 한 줄만 감싸도록 다시 그리세요');
-  if (r.cuts && r.cuts.length && !confirm('영역이 글자를 자르고 있습니다. 그래도 쓸까요? (취소 후 "영역 자동 맞춤" 권장)')) return;
-  if (!confirm(`읽은 글자: ${text}\n\n지금 입력칸에 넣고, 녹화에 '읽어서 입력'으로 저장할까요?\n(실행할 때마다 그때 화면에서 새로 읽습니다)`)) return;
-  const name = '값' + (rec.steps.filter(s => s.do === 'read').length + 1);
-  const read = {do: 'read', region: region.slice(0, 4), as: name, lang: k.lang, psm: k.psm};
-  if (k.chars) read.chars = k.chars;
-  rec.steps.push(read, {do: 'type', text: `{var:${name}}`}); rec.last = Date.now(); renderRec();
-  setMode('ctl');
-  try { await api('/api/browser', {action: 'type', text}); setTimeout(shot, 300); }
-  catch (e) { msg($('shotMsg'), e.message, false); }
-};
-function endRec() { rec = null; $('recBox').style.display = 'none'; $('btnRec').classList.remove('on'); $('btnRec').textContent = '● 녹화'; }
-$('recCancel').onclick = () => { if (!rec || !rec.steps.length || confirm('녹화를 버릴까요?')) endRec(); };
-let dlgSteps = [];
-function openRuleDlg(steps, afterStop) {
-  dlgSteps = steps;
-  $('rName').value = afterStop ? '업무 종료' : ''; msg($('rMsg'), '');
-  document.querySelectorAll('input[name=rAfter]').forEach(r => r.checked = (r.value === (afterStop ? 'stop' : 'continue')));
-  $('rClickMatch').parentElement.style.display = steps.length ? '' : 'none';
-  $('rColor').textContent = pick ? pick.color : '-';
-  $('rColor').style.background = pick ? pick.color : ''; $('rColor').style.color = pick ? '#fff' : '';
-  $('rColorHint').style.display = pick ? 'none' : 'block';
-  $('rOcr').value = lastOcr ? ocrGuess() : '';
-  try { $('rUrl').value = new URL($('addr').value).pathname; } catch (_) {}
-  const first = steps.find(s => s.do === 'click');
-  $('rClickMatch').checked = !!(pick && first && Math.abs(first.x - pick.x) < 60 && Math.abs(first.y - pick.y) < 60);
-  document.querySelectorAll('input[name=rWhen]').forEach(r => r.checked = (r.value === (pick && !afterStop ? 'color' : 'text')));
-  $('ruleDlg').showModal();
-}
-$('recStop').onclick = () => {
-  if (!rec || !rec.steps.some(s => s.do !== 'wait')) return toast('녹화된 동작이 없습니다');
-  while (rec.steps.length && rec.steps[rec.steps.length - 1].do === 'wait') rec.steps.pop();
-  openRuleDlg(rec.steps, false);
-};
-$('btnAddStop').onclick = () => openRuleDlg([], true);
-$('rCancel').onclick = () => $('ruleDlg').close();
-$('rSave').onclick = async () => {
-  const kind = (document.querySelector('input[name=rWhen]:checked') || {}).value;
-  const after = document.querySelector('input[name=rAfter]:checked').value;
-  let when = null, steps = dlgSteps.map(s => ({...s}));
-  if (kind === 'color') {
-    if (!pick) return msg($('rMsg'), "먼저 '선택' 모드에서 색을 고르세요 (이 창을 닫고 고른 뒤 다시 '녹화 끝')", false);
-    const c = {color: pick.color, tolerance: 15, min_pixels: 30};
-    if (region) c.region = region;
-    when = [c];
-    if ($('rClickMatch').checked) { const i = steps.findIndex(s => s.do === 'click'); if (i >= 0) steps[i] = {do:'click_match'}; }
-  } else if (kind === 'text') {
-    if (!$('rText').value.trim()) return msg($('rMsg'), '글자를 입력하세요', false);
-    when = [{text: $('rText').value.trim()}];
-  } else if (kind === 'ocr') {
-    if (!region) return msg($('rMsg'), "먼저 '선택' 모드에서 영역을 드래그하세요", false);
-    if (!$('rOcr').value.trim()) return msg($('rMsg'), '찾을 글자를 입력하세요', false);
-    when = [{ocr: $('rOcr').value.trim(), region}];
-  } else if (kind === 'url') {
-    if (!$('rUrl').value.trim()) return msg($('rMsg'), '주소 글자를 입력하세요', false);
-    when = [{url: $('rUrl').value.trim()}];
-  } else return msg($('rMsg'), '언제 실행할지 고르세요', false);
-  try {
-    const r = await api('/api/rule/add', {name: $('rName').value.trim(), when, steps, after});
-    $('ruleDlg').close(); if (rec) endRec(); toast(r.message); loadRules(); loadConfig();
-  } catch (e) { msg($('rMsg'), e.message, false); }
-};
-
-// ---- 규칙 목록 ----
-let rulesInfo = null;
+// ───── 매크로 목록 ─────
+const KIND_ICON = {text: '🔎', ocr: '🔤', url: '🔗', selector: '🧩'};
 async function loadRules() {
   try {
     rulesInfo = await api('/api/rules');
-    const ul = $('ruleList'); ul.replaceChildren();
-    if (!rulesInfo.rules.length) ul.append(el('li', 'hint', '아직 규칙이 없습니다. 화면 탭에서 ● 녹화로 만드세요.'));
-    rulesInfo.rules.forEach(r => {
-      const li = el('li'), del = el('button', '', '삭제');
-      del.style.float = 'right';
-      del.onclick = async () => {
-        if (!confirm(`'${r.name}' 규칙을 삭제할까요?`)) return;
-        try { const x = await api('/api/rule/delete', {name: r.name}); toast(x.message); loadRules(); loadConfig(); }
-        catch (e) { msg($('ruleMsg'), e.message, false); }
-      };
-      li.append(del, el('div', 'rname', r.name + (r.after === 'stop' ? '  (업무 종료)' : '')),
-        el('div', 'hint', '언제: ' + r.when.join(' 그리고 ')), el('div', 'rsteps', '할 일: ' + r.steps.join(' → ')));
-      ul.append(li);
+    const box = $('ruleList'); box.replaceChildren();
+    $('noRules').classList.toggle('hide', rulesInfo.rules.length > 0);
+    $('hasRules').classList.toggle('hide', rulesInfo.rules.length === 0);
+    rulesInfo.rules.forEach((r, i) => {
+      const it = el('button', 'item rule'), ic = el('span', 'ico' + (r.color ? ' color' : ''), r.color ? '' : (r.after === 'stop' ? '⏹' : KIND_ICON[r.kind] || '•'));
+      if (r.color) ic.style.background = r.color;
+      const t = el('span', 't'), b = el('b', '', r.name);
+      if (r.after === 'stop') b.append(el('span', 'badge stop', '끝냄'));
+      t.append(b, el('small', '', r.when.join(' + ')), el('small', '', '→ ' + r.steps.join(' → ')));
+      it.append(ic, t, el('span', 'chev', '⋯'));
+      it.onclick = () => ruleMenu(r, i);
+      box.append(it);
     });
-    // 현황 탭 안내 카드: 연습 사이트이거나 규칙이 없으면 표시
-    const show = rulesInfo.demo || !rulesInfo.rules.length;
-    $('setupCard').style.display = show ? 'block' : 'none';
-    $('setupHint').textContent = rulesInfo.demo
-      ? '지금은 연습용 결재함입니다. 실제 업무 사이트 주소를 넣으면 연습용 규칙은 지워집니다.'
-      : `업무 사이트: ${rulesInfo.url} · 아직 규칙이 없습니다. 아래 순서대로 만드세요.`;
-    if (!rulesInfo.demo && !$('setupUrl').value) $('setupUrl').value = rulesInfo.url;
-  } catch (e) { msg($('ruleMsg'), e.message, false); }
+    $('refreshState').textContent = rulesInfo.refresh ? `켜짐 · ${rulesInfo.interval}초마다` : '꺼짐';
+    renderGuide();
+  } catch (e) { toast(e.message); }
 }
-loadRules();
+async function ruleMenu(r, i) {
+  const n = rulesInfo.rules.length;
+  const d = await menuSheet(r.name, '언제: ' + r.when.join(' + ') + '\n할 일: ' + r.steps.join(' → '),
+    [...(i > 0 ? [['up', '▲ 위로 (먼저 검사)']] : []), ...(i < n - 1 ? [['down', '▼ 아래로']] : []), ['del', '🗑 삭제', true]]);
+  if (!d) return;
+  const v = {do: d};
+  try {
+    if (v.do === 'del') { if (!await confirmSheet(`'${r.name}' 삭제할까요?`, '', '삭제', true)) return; toast((await api('/api/rule/delete', {name: r.name})).message); }
+    else toast((await api('/api/rule/move', {name: r.name, delta: v.do === 'up' ? -1 : 1})).message);
+    loadRules();
+  } catch (e) { toast(e.message); }
+}
+$('btnRefreshOpt').onclick = async () => {
+  const v = await sheet('안 맞으면 새로고침', {text: '켜면, 아무 매크로도 맞지 않을 때 페이지를 새로고침합니다.\n원하는 아이템이 뜰 때까지 기다릴 때 씁니다.',
+    fields: [{key: 'on', type: 'checkbox', label: '새로고침하며 기다리기', value: rulesInfo.refresh}, {key: 'iv', type: 'number', label: '몇 초마다', value: rulesInfo.interval}], ok: '저장'});
+  if (!v) return;
+  try { toast((await api('/api/settings', {url: rulesInfo.url, refresh: v.on, interval: +v.iv || rulesInfo.interval})).message); loadRules(); loadConfig(); }
+  catch (e) { toast(e.message); }
+};
+$('fab').onclick = () => openWiz();
+$('btnAddStop').onclick = () => openWiz({when: 'text', after: 'stop', stopOnly: true});
+$$('[data-tpl]').forEach(b => b.onclick = () => {
+  const t = b.dataset.tpl;
+  if (t === 'buy') openWiz({when: 'color', steps: [{do: 'click_match'}], addCheckout: true, after: 'continue', refresh: true, name: '아이템 구매'});
+  if (t === 'click') openWiz({when: 'color', steps: [{do: 'click_match'}], name: ''});
+  if (t === 'ocr') openWiz({when: 'text', addRead: true});
+  if (t === 'stop') openWiz({when: 'text', after: 'stop', stopOnly: true});
+});
 
-loadConfig().catch(e => msg($('yamlMsg'), e.message, false));
-let saved = 'status'; try { saved = localStorage.getItem('wm_tab') || 'status'; } catch (_) {}
-setTab(saved);
+// ───── 새 매크로 마법사 ─────
+const STEP_TX = st => {
+  const v = st.do === 'type' && /^\{var:(.+)\}$/.exec(st.text || '');
+  if (v) return `읽은 글자 입력 (${v[1]})`;
+  return ({click_match: '🎯 찾은 색 누르기', click: `👆 누르기 (${st.x}, ${st.y})`, type: `⌨️ 입력 '${st.text}'`, press: `↵ 키 ${st.key}`,
+    wait: `⏱ ${st.sec}초 기다리기`, scroll: `↕ 스크롤 ${st.dy > 0 ? '아래' : '위'}`, goto: `🔗 이동 ${st.url}`, reload: '⟳ 새로고침',
+    read: `🔤 글자 읽기 → ${st.as}`, notify: `🔔 알림 '${st.message}'`, screenshot: '📷 화면 저장',
+    auto_checkout: `🛒 ${st.pay || '무통장입금'} 자동 진행${st.depositor ? ' · 입금자 ' + st.depositor : ''}`})[st.do] || st.do;
+};
+function openWiz(preset = {}) {
+  wiz = {page: 1, when: preset.when || null, steps: preset.steps ? preset.steps.map(s => ({...s})) : [], after: preset.after || 'continue',
+         refresh: !!preset.refresh, name: preset.name || '', stopOnly: !!preset.stopOnly, color: null, region: null, text: '', recording: false};
+  pick = null; region = null;
+  $('wName').value = wiz.name; $('wRefresh').checked = wiz.refresh || !!(rulesInfo && rulesInfo.refresh);
+  $('wiz').classList.remove('hide'); document.body.style.overflow = 'hidden';
+  $('wTitle').textContent = wiz.stopOnly ? '멈춤 조건' : '새 매크로';
+  wizPage(1);
+  if (preset.addCheckout) setTimeout(() => toast('1단계: 화면에서 아이템 색을 눌러 고르세요'), 300);
+  wiz.afterSteps = preset.addCheckout ? 'checkout' : preset.addRead ? 'read' : null;
+}
+function closeWiz() {
+  if (wiz && wiz.recording) endRec();
+  wiz = null; onPick = onRegion = null; $('wiz').classList.add('hide'); document.body.style.overflow = '';
+  mountRemote($('remoteHome'), 'ctl');
+  if (tab === 'macros') loadRules();
+}
+$('wClose').onclick = async () => { if (!wiz.steps.length || await confirmSheet('만들던 매크로를 버릴까요?', '', '버리기', true)) closeWiz(); };
+$('wBack').onclick = () => wiz.page > 1 ? wizPage(wiz.page - 1) : $('wClose').onclick();
+$('wPrev').onclick = $('wBack').onclick;
+function wizPage(n) {
+  if (wiz.recording) endRec();
+  wiz.page = n;
+  ['w1', 'w2', 'w3'].forEach((id, i) => $(id).classList.toggle('hide', i + 1 !== n));
+  $$('#wiz .dots i').forEach((d, i) => d.classList.toggle('on', i < n));
+  $('wPrev').textContent = n === 1 ? '취소' : '이전';
+  $('wNext').textContent = n === 3 ? '저장' : '다음';
+  $('wBody').scrollTop = 0;
+  if (n === 1 && wiz.when) chooseWhen(wiz.when);
+  if (n === 2) { renderSteps(); if (wiz.afterSteps) { const a = wiz.afterSteps; wiz.afterSteps = null; a === 'checkout' ? addCheckout() : addRead(); } }
+  if (n === 3) renderSummary();
+  $$('[data-after]').forEach(b => b.classList.toggle('on', b.dataset.after === wiz.after));
+}
+// 1. 언제
+$$('[data-when]').forEach(b => b.onclick = () => chooseWhen(b.dataset.when));
+function chooseWhen(k) {
+  wiz.when = k; $$('[data-when]').forEach(b => b.classList.toggle('on', b.dataset.when === k));
+  $('remoteHome').append($('remote'));   // 지우기 전에 원격 화면을 제자리로
+  const box = $('wWhenBox'); box.replaceChildren(); onPick = onRegion = null;
+  if (k === 'color') {
+    box.append(el('div', 'hintline', '① 찾을 아이템·버튼 색을 화면에서 누르세요. (안 보이면 ⟳ 새로고침)  ② 화면의 다른 곳에도 같은 색이 있으면 손가락으로 끌어 찾을 범위를 정하세요.'));
+    const holder = el('div'); box.append(holder); mountRemote(holder, 'pick', {noCtl: true});
+    onPick = p => { wiz.color = p.color; toast('색 ' + p.color + ' 선택됨'); };
+    onRegion = r => { wiz.region = r; };
+    if (!$('shot').naturalWidth) shot();
+  } else if (k === 'ocr') {
+    box.append(el('div', 'hintline', '① 글자가 나오는 자리를 손가락으로 끌어 감싸세요.'));
+    const holder = el('div'); box.append(holder); mountRemote(holder, 'region', {noCtl: true, lockMode: true});
+    const f = el('label', 'field'), i = el('input'); i.type = 'text'; i.id = 'wOcrText'; i.placeholder = '예: 승인 요청'; i.value = wiz.text;
+    f.append(el('span', '', '② 이 글자가 보이면'), i); box.append(f);
+    onRegion = async r => { wiz.region = r; try { const x = await api('/api/ocr', {region: r}); if (x.text && !i.value) i.value = x.text.split('\n')[0]; } catch (_) {} };
+    if (!$('shot').naturalWidth) shot();
+  } else {
+    const f = el('label', 'field'), i = el('input'); i.type = 'text'; i.id = 'wText';
+    i.placeholder = k === 'text' ? (wiz.stopOnly ? '예: 처리할 항목이 없습니다' : '예: 구매 가능') : '예: /order';
+    if (k === 'url') { try { i.value = new URL($('addr').value).pathname; } catch (_) {} } else i.value = wiz.text;
+    f.append(el('span', '', k === 'text' ? '페이지에 이 글자가 있으면' : '주소에 이 글자가 들어 있으면'), i); box.append(f);
+  }
+}
+// 2. 무엇을
+function renderSteps() {
+  const ul = $('wSteps'); ul.replaceChildren();
+  wiz.steps.forEach((st, i) => {
+    const li = el('li'), up = el('button', 'mini', '▲'), del = el('button', 'mini', '✕');
+    up.onclick = () => { if (i > 0) { wiz.steps.splice(i - 1, 0, wiz.steps.splice(i, 1)[0]); renderSteps(); } };
+    del.onclick = () => { wiz.steps.splice(i, 1); renderSteps(); };
+    if (i === 0) up.style.visibility = 'hidden';
+    li.append(el('span', 't', STEP_TX(st)), up, del); ul.append(li);
+  });
+  $('wNoSteps').classList.toggle('hide', wiz.steps.length > 0);
+  $('addClickMatch').classList.toggle('hide', wiz.when !== 'color');
+  $('wAdds').classList.toggle('hide', wiz.recording);
+  $('wRec').classList.toggle('hide', !wiz.recording);
+}
+$$('[data-add]').forEach(b => b.onclick = async () => {
+  const k = b.dataset.add;
+  if (k === 'rec') return beginRec();
+  if (k === 'click_match') wiz.steps.push({do: 'click_match'});
+  if (k === 'reload') wiz.steps.push({do: 'reload'});
+  if (k === 'checkout') return addCheckout();
+  if (k === 'read') return addRead();
+  if (k === 'type') { const v = await sheet('글자 입력', {fields: [{key: 't', label: '입력할 글자 (먼저 입력칸을 누르는 단계가 있어야 해요)'}]}); if (v && v.t) wiz.steps.push({do: 'type', text: v.t}); }
+  if (k === 'key') { const v = await sheet('키 누르기', {fields: [{key: 'k', label: '키', type: 'select', options: [['Enter', 'Enter'], ['Tab', 'Tab'], ['Escape', 'Esc'], ['Backspace', '지우기'], ['F5', 'F5 새로고침']]}]}); if (v) wiz.steps.push({do: 'press', key: v.k}); }
+  if (k === 'wait') { const v = await sheet('기다리기', {fields: [{key: 's', label: '초', type: 'number', value: 1}]}); if (v && +v.s > 0) wiz.steps.push({do: 'wait', sec: +v.s}); }
+  if (k === 'notify') { const v = await sheet('알림 보내기', {fields: [{key: 'm', label: '보낼 내용', value: '찾았습니다!'}]}); if (v && v.m) wiz.steps.push({do: 'notify', message: v.m}); }
+  renderSteps();
+});
+async function addCheckout() {
+  const v = await sheet('무통장입금 자동 진행', {
+    text: '다음단계 → 결제수단 선택 → 동의 체크 → 결제하기를 화면을 보고 알아서 진행하고, 주문 완료 화면에서 멈추고 알려 드립니다.\n보안문자나 모르는 입력칸이 나오면 멈추고 알려 드려요.',
+    fields: [{key: 'pay', label: '결제수단 (화면에 적힌 이름)', value: '무통장입금'}, {key: 'dep', label: '입금자명 (입력칸이 있으면 이걸로)', placeholder: '예: 홍길동'},
+             {key: 'max', label: '한 번 실행에 최대 주문 수', type: 'number', value: 1}], ok: '추가'});
+  if (!v) return;
+  const st = {do: 'auto_checkout', pay: v.pay.trim() || '무통장입금', max_orders: Math.max(1, +v.max || 1)};
+  if (v.dep.trim()) st.depositor = v.dep.trim();
+  wiz.steps.push(st); renderSteps();
+}
+let readWaiter = null;
+async function addRead() {
+  const v = await sheet('화면 글자 읽어 입력', {text: '① 브라우저에서 값을 넣을 입력칸을 먼저 누르는 단계가 있어야 합니다 (녹화로 추가).\n② 다음 화면에서 읽을 글자를 손가락으로 끌어 감싸세요.',
+    fields: [{key: 'kind', label: '글자 종류', type: 'select', options: [['kor', '한글 포함'], ['eng', '영문·숫자 코드'], ['num', '숫자만']]}], ok: '영역 고르기'});
+  if (!v) return;
+  const K = {kor: {lang: 'kor+eng', psm: 6}, eng: {lang: 'eng', psm: 7}, num: {lang: 'eng', psm: 7, chars: '0123456789'}}[v.kind];
+  const box = $('wRec'); $('wAdds').classList.add('hide'); box.classList.remove('hide');
+  box.querySelector('.rec').innerHTML = '<i></i> 읽을 글자를 끌어 감싸세요';
+  $('wRecDone').textContent = '취소';
+  mountRemote($('remoteRec'), 'region', {noCtl: true, lockMode: true});
+  if (!$('shot').naturalWidth) shot();
+  readWaiter = true;
+  onRegion = async r => {
+    try {
+      const x = await api('/api/ocr', {region: r, ...K}), text = (x.text || '').trim();
+      if (!text) return toast('글자를 못 읽었어요. 조금 넓게 다시 그려 보세요');
+      if (text.includes('\n')) return toast('여러 줄이 읽혔어요. 한 줄만 감싸 주세요');
+      if (!await confirmSheet('이렇게 읽혔어요', text + '\n\n실행할 때마다 그때 화면에서 새로 읽어서 입력합니다.', '추가')) return;
+      const name = '값' + (wiz.steps.filter(s => s.do === 'read').length + 1), st = {do: 'read', region: r.slice(0, 4), as: name, lang: K.lang, psm: K.psm};
+      if (K.chars) st.chars = K.chars;
+      wiz.steps.push(st, {do: 'type', text: `{var:${name}}`}); endRead();
+    } catch (e) { toast(e.message); }
+  };
+}
+function endRead() { readWaiter = null; onRegion = null; region = null; $('wRecDone').textContent = '녹화 끝'; $('wRec').classList.add('hide'); $('wAdds').classList.remove('hide'); renderSteps(); }
+// 녹화
+let recLast = 0;
+function beginRec() {
+  wiz.recording = true; recLast = Date.now();
+  $('wRec').querySelector('.rec').innerHTML = '<i></i> 녹화 중 · 화면을 눌러 직접 해보세요';
+  renderSteps(); mountRemote($('remoteRec'), 'ctl', {lockMode: true}); shot();
+}
+function endRec() { wiz.recording = false; mountRemote($('remoteHome'), 'ctl'); renderSteps(); }
+$('wRecDone').onclick = () => readWaiter ? endRead() : endRec();
+function recordAct(b) {
+  if (!wiz || !wiz.recording) return;
+  const now = Date.now(), gap = (now - recLast) / 1000; recLast = now;
+  let st = null;
+  if (b.action === 'click') st = {do: 'click', x: b.x, y: b.y};
+  else if (b.action === 'type') { if (b.secret) { toast('비밀번호는 녹화하지 않았어요'); return; } st = {do: 'type', text: b.text}; }
+  else if (b.action === 'press') st = {do: 'press', key: b.key};
+  else if (b.action === 'scroll') st = {do: 'scroll', dy: b.dy};
+  else if (b.action === 'goto') st = {do: 'goto', url: b.url};
+  else if (b.action === 'reload') st = {do: 'reload'};
+  if (!st) return;
+  if (wiz.steps.length && gap > 1.2) wiz.steps.push({do: 'wait', sec: Math.min(3, Math.round(gap * 2) / 2)});
+  // 색 조건이면 그 색 근처 첫 클릭은 '찾은 색 누르기'로 (위치가 바뀌어도 따라감)
+  if (st.do === 'click' && wiz.when === 'color' && wiz.colorPos && !wiz.steps.some(s => s.do === 'click_match') &&
+      Math.abs(st.x - wiz.colorPos.x) < 60 && Math.abs(st.y - wiz.colorPos.y) < 60) st = {do: 'click_match'};
+  wiz.steps.push(st); renderSteps(); toast('추가: ' + STEP_TX(st));
+}
+// 3. 그 다음
+$$('[data-after]').forEach(b => b.onclick = () => { wiz.after = b.dataset.after; $$('[data-after]').forEach(x => x.classList.toggle('on', x === b)); renderSummary(); });
+function whenTx() {
+  return {color: `색 ${wiz.color || '?'}이 보이면` + (wiz.region ? ' (정한 범위 안)' : ''), text: `'${wiz.text}' 글자가 있으면`,
+          ocr: `그 자리에 '${wiz.text}'이 보이면`, url: `주소에 '${wiz.text}'`}[wiz.when] || '';
+}
+function renderSummary() {
+  $('wRefreshRow').classList.toggle('hide', wiz.when !== 'color');
+  if (!$('wName').value) $('wName').value = wiz.stopOnly ? '업무 종료' : wiz.steps.some(s => s.do === 'auto_checkout') ? '아이템 구매' : (wiz.when === 'color' ? '색 클릭' : '매크로') + ((rulesInfo ? rulesInfo.rules.length : 0) + 1);
+  const s = $('wSummary'); s.replaceChildren(el('div', '', '언제: ' + whenTx()));
+  const steps = wiz.steps.length ? wiz.steps : (wiz.after === 'stop' ? [{do: 'screenshot'}] : []);
+  s.append(el('div', '', '할 일: ' + (steps.map(STEP_TX).join(' → ') || '(없음)')), el('div', '', '그 다음: ' + (wiz.after === 'stop' ? '매크로 끝냄' : '계속 지켜봄')));
+}
+$('wNext').onclick = async () => {
+  if (wiz.page === 1) {
+    if (!wiz.when) return toast('언제 실행할지 고르세요');
+    if (wiz.when === 'color') { if (!wiz.color) return toast('화면에서 색을 눌러 고르세요'); wiz.colorPos = pick ? {x: pick.x, y: pick.y} : null; }
+    if (wiz.when === 'ocr') { wiz.text = ($('wOcrText').value || '').trim(); if (!wiz.region) return toast('글자 자리를 끌어서 고르세요'); if (!wiz.text) return toast('찾을 글자를 입력하세요'); }
+    if (wiz.when === 'text' || wiz.when === 'url') { wiz.text = ($('wText').value || '').trim(); if (!wiz.text) return toast('글자를 입력하세요'); }
+    mountRemote($('remoteHome'), 'ctl'); onPick = onRegion = null;
+    return wizPage(wiz.stopOnly ? 3 : 2);
+  }
+  if (wiz.page === 2) {
+    if (wiz.recording) endRec();
+    if (!wiz.steps.length) return toast('할 일을 하나 이상 추가하세요');
+    while (wiz.steps.length && wiz.steps[wiz.steps.length - 1].do === 'wait') wiz.steps.pop();
+    return wizPage(3);
+  }
+  // 저장
+  const when = {color: [{color: wiz.color, tolerance: 15, min_pixels: 30, ...(wiz.region ? {region: wiz.region.slice(0, 4)} : {})}],
+                text: [{text: wiz.text}], ocr: [{ocr: wiz.text, region: (wiz.region || []).slice(0, 4)}], url: [{url: wiz.text}]}[wiz.when];
+  try {
+    const r = await api('/api/rule/add', {name: $('wName').value.trim(), when, steps: wiz.steps, after: wiz.after});
+    if (wiz.when === 'color' && $('wRefresh').checked !== !!(rulesInfo && rulesInfo.refresh))
+      await api('/api/settings', {url: rulesInfo.url, refresh: $('wRefresh').checked});
+    toast(r.message); closeWiz(); setTab('macros');
+  } catch (e) { msg($('wMsg'), e.message, false); }
+};
+
+// ───── 설정 ─────
+async function loadConfig() {
+  try {
+    const c = await api('/api/config'), s = c.settings || {};
+    settings = s;
+    if (document.activeElement !== $('yaml')) $('yaml').value = c.yaml;
+    $('cfgPath').textContent = '설정 파일: ' + c.path;
+    if (s.error) msg($('yamlMsg'), '현재 설정 오류: ' + s.error, false);
+    $('url').value = s.url || ''; $('interval').value = s.interval || 2; $('refresh').checked = !!s.refresh;
+    const vp = `${s.width}x${s.height}`; if (![...$('vp').options].some(o => o.value === vp)) { const o = el('option', '', `${s.width}×${s.height}`); o.value = vp; $('vp').append(o); }
+    $('vp').value = vp; $('siteNow').textContent = '지금: ' + (s.url || '-');
+    renderGuide();
+  } catch (e) { msg($('yamlMsg'), e.message, false); }
+}
+$('btnSaveSite').onclick = async () => {
+  const [w, h] = $('vp').value.split('x').map(Number);
+  try {
+    const r = await api('/api/settings', {url: normUrl($('url').value), width: w, height: h, interval: +$('interval').value, refresh: $('refresh').checked});
+    msg($('siteMsg'), r.message, true); loadConfig(); loadRules();
+  } catch (e) { msg($('siteMsg'), e.message, false); }
+};
+$('btnSaveYaml').onclick = async () => {
+  try { const r = await api('/api/config', {yaml: $('yaml').value}); msg($('yamlMsg'), r.message, true); loadConfig(); loadRules(); }
+  catch (e) { msg($('yamlMsg'), e.message, false); }
+};
+$('btnRevert').onclick = () => { $('yaml').blur(); loadConfig().then(() => msg($('yamlMsg'), '저장된 내용으로 되돌림', true)); };
+async function loadShots() {
+  try {
+    const r = await api('/api/shots'), box = $('shots'); box.replaceChildren();
+    if (!r.shots.length) box.append(el('div', 'muted small', '없음'));
+    r.shots.slice(0, 18).forEach(s => {
+      const f = el('figure'), a = shotLink(s.name, ''), img = el('img'); img.loading = 'lazy'; img.src = '/shots/' + encodeURIComponent(s.name);
+      a.append(img); f.append(a, el('figcaption', '', s.name.replace('.png', '').slice(9))); box.append(f);
+    });
+  } catch (_) {}
+}
+
+loadConfig(); loadRules();
+let saved = 'home'; try { saved = localStorage.getItem('wm_tab') || 'home'; } catch (_) {}
+setTab(TITLES[saved] ? saved : 'home');
 </script>
 </body>
 </html>

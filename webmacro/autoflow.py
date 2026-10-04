@@ -94,7 +94,9 @@ SCAN_JS = r"""
     if (el.tagName === 'SELECT') {
       if (!el.value) {
         const op = [...el.options].find(x => x.value && !x.disabled);
-        if (op) return mark(el, 'select', labelOf(el) + ':' + sq(op.text), {value: op.value});
+        let lab = labelOf(el);
+        for (const x of el.options) lab = lab.replace(sq(x.text), '');
+        if (op) return mark(el, 'select', (lab ? lab + ' → ' : '') + sq(op.text), {value: op.value});
       }
       continue;
     }

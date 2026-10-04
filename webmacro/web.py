@@ -440,9 +440,13 @@ class Controller:
                     label = {"text": "글자", "ocr": "화면 글자", "selector": "요소", "url": "주소"}[c.kind]
                     conds.append(f"{'없을 때 ' if c.absent else ''}{label} '{c.value}'")
             steps = cfg.patterns.get(r.then, [])
+            first = r.when[0] if r.when else None
             out.append({"name": r.name, "when": conds or ["(항상)"], "pattern": r.then,
-                        "steps": [_step_label(st) for st in steps], "after": r.after})
-        return {"url": cfg.url, "demo": _is_demo(cfg.url), "rules": out}
+                        "steps": [_step_label(st) for st in steps], "after": r.after,
+                        "kind": first.kind if first else None,
+                        "color": "#%02X%02X%02X" % tuple(first.value) if first and first.kind == "color" else None})
+        return {"url": cfg.url, "demo": _is_demo(cfg.url), "rules": out, "refresh": cfg.refresh_on_idle,
+                "interval": cfg.interval}
 
     def add_rule(self, body: dict):
         name = str(body.get("name") or "").strip()
@@ -504,6 +508,17 @@ class Controller:
             if frac > 0.25:
                 raise ValueError(f"고른 색 {c['color']} 이(가) 화면의 {frac:.0%}를 차지합니다 — 배경색으로 보입니다. "
                                  "'선택' 모드에서 버튼 위를 정확히 눌러 다시 고르세요 (확대하면 쉽습니다).")
+
+    def move_rule(self, name: str, delta: int):
+        """규칙 순서 바꾸기 (위에 있을수록 먼저 검사)."""
+        def change(data):
+            rules = data.get("rules") or []
+            i = next((k for k, r in enumerate(rules) if isinstance(r, dict) and r.get("name") == name), None)
+            if i is None:
+                raise ValueError(f"없는 규칙: {name}")
+            j = max(0, min(len(rules) - 1, i + delta))
+            rules.insert(j, rules.pop(i))
+        return self.edit_config(change)
 
     def delete_rule(self, name: str):
         def change(data):
@@ -740,6 +755,9 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                     cfg = ctl.add_rule(body)
                     self._json({"ok": True, "message": f"규칙 '{body.get('name')}' 저장됨 (규칙 {len(cfg.rules)}개)"
                                 + _restart_note(ctl)})
+                elif path == "/api/rule/move":
+                    ctl.move_rule(str(body.get("name", "")), int(body.get("delta", -1)))
+                    self._json({"ok": True, "message": "순서 바꿈" + _restart_note(ctl)})
                 elif path == "/api/rule/delete":
                     ctl.delete_rule(str(body.get("name", "")))
                     self._json({"ok": True, "message": "삭제됨" + _restart_note(ctl)})
