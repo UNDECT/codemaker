@@ -17,6 +17,15 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 docker compose version >/dev/null 2>&1 || { echo "docker compose 플러그인이 필요합니다"; exit 1; }
 
+# 1-1. 메모리가 작으면(무료 1GB 서버 등) 스왑 2GB 추가 — 크롬·글자인식이 메모리 부족으로 죽지 않게
+MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$MEM_MB" -lt 3000 ] && ! swapon --show | grep -q .; then
+  say "메모리 ${MEM_MB}MB → 스왑 2GB 추가"
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 # 2. 접속 주소
 DOMAIN="${1:-}"
 if [ -z "$DOMAIN" ]; then

@@ -174,7 +174,7 @@ python -m webmacro run 설정.yaml --dry-run --once   # 클릭 없이 판단만 
 
 ## 5. 클라우드에서 24시간 실행 + 휴대폰 접속
 
-리눅스 서버(오라클 클라우드 무료 VM, AWS Lightsail, 국내 VPS 등 우분투)에서 **명령 두 줄**이면 됩니다:
+리눅스 서버(오라클 클라우드 무료 VM, AWS Lightsail, 국내 VPS 등 우분투)에서 **명령 두 줄**이면 됩니다. 휴대폰만으로 오라클 무료 서버를 만드는 방법은 [docs/server-guide.md](docs/server-guide.md):
 
 ```bash
 git clone -b ccr-287c0b4e-v2ibub https://github.com/UNDECT/codemaker.git && cd codemaker
