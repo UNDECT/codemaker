@@ -17,7 +17,7 @@ ACTION_KO = {
     "click_text": "글자 클릭", "type": "입력", "press": "키 입력", "wait": "대기",
     "wait_color": "색 기다림", "wait_text": "글자 기다림", "read": "글자 읽기",
     "wait_ocr": "글자(OCR) 기다림", "scroll": "스크롤", "goto": "주소 이동", "reload": "새로고침",
-    "screenshot": "화면 저장", "notify": "알림", "stop": "종료",
+    "screenshot": "화면 저장", "notify": "알림", "stop": "종료", "auto_checkout": "자동 진행",
 }
 
 
@@ -119,6 +119,9 @@ class Monitor:
                 self.today["checks"] += 1
                 self.current_rule = None
                 self._set("화면 확인 중 · 맞는 상황 없음 (대기)")
+            elif kind == "auto":
+                self._set(i["text"])
+                self._add("rule", i["text"])
             elif kind == "refresh":
                 self._set(f"맞는 상황 없음 → 새로고침 ({i['streak']}회째)")
             elif kind == "rule":

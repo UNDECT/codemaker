@@ -808,7 +808,8 @@ def _is_demo(url: str) -> bool:
 STEP_KO = {"click_match": "찾은 색 클릭", "click": "클릭", "click_selector": "요소 클릭", "click_text": "글자 클릭",
            "type": "입력", "press": "키", "wait": "대기", "wait_color": "색 기다림", "wait_text": "글자 기다림",
            "read": "글자 읽기", "wait_ocr": "화면 글자 기다림", "scroll": "스크롤", "goto": "이동",
-           "reload": "새로고침", "screenshot": "화면 저장", "notify": "알림", "run": "패턴 실행", "stop": "종료"}
+           "reload": "새로고침", "screenshot": "화면 저장", "notify": "알림", "run": "패턴 실행", "stop": "종료",
+           "auto_checkout": "자동 진행"}
 
 
 def _step_label(st: dict) -> str:
@@ -832,6 +833,8 @@ def _step_label(st: dict) -> str:
         return f"{k} {str(st.get('url'))[:40]}"
     if act == "scroll":
         return f"{k} {'아래' if int(st.get('dy', 0)) > 0 else '위'}"
+    if act == "auto_checkout":
+        return f"{k} ({st.get('pay', '무통장입금')} → 주문 완료까지)"
     return k
 
 

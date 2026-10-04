@@ -30,6 +30,7 @@ class Driver:
     def back(self): raise NotImplementedError
     def forward(self): raise NotImplementedError
     def save_session(self): ...
+    def auto_step(self, opts: dict) -> dict: raise NotImplementedError
 
 
 def _chromium_path() -> str | None:
@@ -47,6 +48,8 @@ class PlaywrightDriver(Driver):
     def __init__(self, cfg):
         self.cfg = cfg
         self._pw = self._browser = self._ctx = self.page = None
+        self.accept_dialogs = False   # 자동 진행 중엔 '주문하시겠습니까?' 같은 확인창을 수락
+        self.last_dialog = ""
 
     @property
     def session_path(self) -> Path | None:
@@ -81,6 +84,8 @@ class PlaywrightDriver(Driver):
             ctx_kw["storage_state"] = str(sp)
         self._ctx = self._browser.new_context(**ctx_kw)
         self.page = self._ctx.new_page()
+        self._ctx.on("page", self._on_popup)
+        self.page.on("dialog", self._on_dialog)
         try:
             self.page.goto(self.cfg.url, wait_until="domcontentloaded")
         except Exception:
@@ -158,3 +163,47 @@ class PlaywrightDriver(Driver):
 
     def forward(self):
         self.page.go_forward(wait_until="domcontentloaded")
+
+    # ---------- 자동 진행 ----------
+    def _on_dialog(self, dlg):
+        self.last_dialog = dlg.message
+        try:
+            dlg.accept() if self.accept_dialogs else dlg.dismiss()
+        except Exception:
+            pass
+
+    def _on_popup(self, page):
+        """새 창(주문·결제 창)이 열리면 그 창으로 옮겨 간다."""
+        page.on("dialog", self._on_dialog)
+        self.page = page
+
+    def auto_step(self, opts: dict) -> dict:
+        """화면을 읽어 할 일 하나를 하고 결과를 돌려준다 (autoflow.SCAN_JS 참고)."""
+        from .autoflow import SCAN_JS
+
+        if self.page.is_closed():  # 창이 닫히면 남은 창으로
+            pages = [p for p in self._ctx.pages if not p.is_closed()]
+            if not pages:
+                return {"kind": "none"}
+            self.page = pages[-1]
+        try:
+            self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+        except Exception:
+            pass
+        main = self.page.main_frame
+        for fr in [main] + [f for f in self.page.frames if f != main]:
+            try:
+                r = fr.evaluate(SCAN_JS, opts)
+            except Exception:  # 다른 도메인 iframe, 이동 중인 프레임
+                continue
+            if r["kind"] == "none":
+                continue
+            el = fr.locator("[data-wm-target]").first
+            if r["kind"] in ("click", "pay", "agree"):
+                el.click(timeout=5000)
+            elif r["kind"] == "select":
+                el.select_option(value=r["value"], timeout=5000)
+            elif r["kind"] == "fill":
+                el.fill(r["text"], timeout=5000)
+            return r
+        return {"kind": "none"}

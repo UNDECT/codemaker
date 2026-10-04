@@ -36,6 +36,8 @@ ACTIONS = {
     "notify":         {"req": {"message"}},
     "run":            {"req": {"pattern"}},
     "stop":           {"opt": {"message"}},
+    # 결제수단 고르기·동의·다음단계·결제하기를 화면을 보고 스스로 진행, 주문 완료 화면에서 멈춤
+    "auto_checkout":  {"opt": {"pay", "depositor", "buttons", "done", "timeout", "max_orders"}},
 }
 CONDITIONS = {"color", "text", "selector", "url", "ocr"}
 OCR_KEYS = {"region", "lang", "regex", "psm", "as", "chars"}

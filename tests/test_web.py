@@ -464,3 +464,56 @@ def test_read_screen_text_and_type_it(panel):
     assert req(base, "/api/start", {})[0] == 200
     wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료")
     assert ctl.call(lambda: ctl.driver.page.inner_text("body")).strip() == "완료:AB-4829"
+
+
+SHOP_DIR = __import__("pathlib").Path(__file__).parent / "shop"
+
+
+def _shop_rules(site_item, extra=""):
+    return ("url: " + json.dumps(site_item) + "\nviewport: {width: 800, height: 600}\ninterval: 0.2\n"
+            "refresh_on_idle: true\nrules:\n"
+            "  - name: 아이템 구매\n    when: {color: '#8E24AA'}\n"
+            "    then: [{do: click_match}, {do: auto_checkout, pay: 무통장입금, depositor: 홍길동" + extra + "}]\n")
+
+
+def test_auto_checkout_bank_transfer(panel):
+    import shutil
+    base, ctl, tmp = panel
+    shutil.copytree(SHOP_DIR, tmp / "shop")
+    item = (tmp / "shop" / "item.html").as_uri()
+    assert req(base, "/api/config", {"yaml": _shop_rules(item)})[0] == 200
+    labels = req(base, "/api/rules")[1]["rules"][0]["steps"]
+    assert labels == ["찾은 색 클릭", "자동 진행 (무통장입금 → 주문 완료까지)"]
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: not req(base, "/api/state")[1]["running"] and req(base, "/api/state")[1]["last_result"], 90)
+    st = req(base, "/api/state")[1]
+    assert st["last_result"] == "업무 종료", st
+    url = ctl.call(lambda: ctl.driver.url())
+    assert "done.html?pay=bank&bank=kb&name=%ED%99%8D%EA%B8%B8%EB%8F%99" in url
+    assert any("주문 완료(무통장입금) 1건" in m for m in ctl.notifier.messages)
+    texts = [e["text"] for e in req(base, "/api/state")[1]["monitor"]["events"]]
+    assert any("무통장입금" in t for t in texts) and any("동의" in t for t in texts)
+    assert not any("신용카드" in t or "취소" in t or "장바구니" in t for t in texts)
+
+
+def test_auto_checkout_stops_on_captcha_and_unknown_field(panel):
+    import shutil
+    base, ctl, tmp = panel
+    shutil.copytree(SHOP_DIR, tmp / "shop")
+    order = tmp / "shop" / "order.html"
+    order.write_text(order.read_text(encoding="utf-8").replace("<h2>주문서</h2>", "<h2>주문서</h2><p>보안문자를 입력하세요</p>"),
+                     encoding="utf-8")
+    item = (tmp / "shop" / "item.html").as_uri()
+    assert req(base, "/api/config", {"yaml": _shop_rules(item)})[0] == 200
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: not req(base, "/api/state")[1]["running"] and req(base, "/api/state")[1]["last_result"], 90)
+    assert any("보안문자" in m for m in ctl.notifier.messages)
+    assert "order.html" in ctl.call(lambda: ctl.driver.url())   # 결제하지 않고 그 화면에 멈춰 있음
+
+    # 입금자명을 모르면 멈추고 알려 준다
+    order.write_text(order.read_text(encoding="utf-8").replace("<p>보안문자를 입력하세요</p>", ""), encoding="utf-8")
+    assert req(base, "/api/config", {"yaml": _shop_rules(item).replace(", depositor: 홍길동", "")})[0] == 200
+    ctl.notifier.messages.clear()
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: not req(base, "/api/state")[1]["running"] and req(base, "/api/state")[1]["last_result"], 90)
+    assert any("입금자명" in m for m in ctl.notifier.messages), ctl.notifier.messages

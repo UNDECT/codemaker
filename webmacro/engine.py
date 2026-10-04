@@ -15,7 +15,7 @@ from pathlib import Path
 
 import re
 
-from . import ocr
+from . import autoflow, ocr
 from .color import find_blobs, pick_blob
 from .config import Config, Condition, Rule, expand_env, is_web_url
 from .driver import Driver
@@ -23,7 +23,7 @@ from .notify import Notifier
 
 log = logging.getLogger("webmacro")
 
-COUNTED = {"click_match", "click", "click_selector", "click_text", "type", "press"}
+COUNTED = {"click_match", "click", "click_selector", "click_text", "type", "press", "auto_checkout"}
 SESSION_SAVE_SEC = 600
 
 
@@ -68,6 +68,7 @@ class Engine:
         self._acted = False           # 이번 규칙에서 클릭·입력을 했는지
         self._driver_started = clock()
         self._last_prune = None
+        self.orders = 0               # 자동 진행으로 완료한 주문 수 (이번 실행)
 
     def emit(self, kind: str, **info):
         if self.on_event:
@@ -270,6 +271,60 @@ class Engine:
             self.run_pattern(s["pattern"], matches, depth + 1)
         elif act == "stop":
             raise _Stop(s.get("message", ""))
+        elif act == "auto_checkout":
+            self._auto_checkout(s)
+
+    AUTO_KO = {"pay": "결제수단 선택", "agree": "동의 체크", "click": "버튼", "select": "선택", "fill": "입력"}
+
+    def _auto_checkout(self, s: dict):
+        """화면을 보고 다음에 할 일을 스스로 골라 주문 완료까지 진행. 모르는 상황이면 멈추고 사람에게 넘긴다."""
+        limit = int(s.get("max_orders", 1))
+        if self.orders >= limit:
+            raise _Stop(f"주문 한도 {limit}건에 도달해 멈춤")
+        d = self.driver
+        opts = autoflow.options(self.fill(str(s.get("pay", "무통장입금"))), self.fill(str(s.get("depositor", ""))),
+                                s.get("buttons"), s.get("done"))
+        timeout = float(s.get("timeout", 120))
+        end = self.clock() + timeout
+        tries: dict = {}
+        last_url = None
+        d.accept_dialogs = True   # '주문하시겠습니까?' 확인창 수락
+        try:
+            while True:
+                if self.clock() > end:
+                    raise StepFailed(f"{timeout:g}초 안에 주문 완료 화면이 안 나옴")
+                url = d.url()
+                if url != last_url:
+                    opts["payDone"], last_url = False, url
+                r = d.auto_step(opts)
+                kind, label = r.get("kind"), r.get("label", "")
+                if kind == "done":
+                    self.orders += 1
+                    shot = self._shot("order_done")
+                    self.emit("auto", text=f"주문 완료 화면 확인: {label}")
+                    raise _Stop(f"주문 완료({opts['pay'] or '결제'}) {self.orders}건"
+                                + (f" · 화면 {shot.name}" if shot else ""))
+                if kind == "captcha":
+                    self._shot("captcha")
+                    raise _Stop("보안문자가 나와 멈춤 — '화면' 탭에서 직접 진행하세요")
+                if kind == "need_input":
+                    self._shot("need_input")
+                    raise _Stop(f"'{label}' 칸을 채울 수 없어 멈춤 — '화면' 탭에서 직접 입력하세요")
+                if kind == "none":
+                    self.sleep(0.5)
+                    continue
+                key = (kind, label)
+                tries[key] = tries.get(key, 0) + 1
+                if tries[key] > 4:
+                    raise StepFailed(f"'{label}' 을(를) {tries[key] - 1}번 눌러도 다음으로 안 넘어감")
+                if kind == "pay":
+                    opts["payDone"] = True
+                self._count_action()
+                log.info("자동 진행: %s %s", kind, label)
+                self.emit("auto", text=f"자동 진행: {self.AUTO_KO.get(kind, kind)} '{label}'")
+                self.sleep(0.6)
+        finally:
+            d.accept_dialogs = False
 
     def _human(self, step: dict, matches: dict) -> str:
         """현황 화면용 짧은 설명 (비밀번호·환경변수 값은 숨김)."""
@@ -295,6 +350,8 @@ class Engine:
                 return f"→ {step['as']}"
             if act == "goto":
                 return str(step["url"])[:60]
+            if act == "auto_checkout":
+                return f"({step.get('pay', '무통장입금')} → 주문 완료까지)"
         except (StepFailed, KeyError, TypeError, ValueError):
             pass
         return ""

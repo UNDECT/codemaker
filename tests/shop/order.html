@@ -1,0 +1,23 @@
+<!doctype html><meta charset=utf-8><style>.r input{display:none}.r label{display:inline-block;padding:8px;border:1px solid #999}
+.r input:checked+label{background:#2563eb;color:#fff}</style><body>
+<h2>주문서</h2>
+<div class=r>
+ <input type=radio name=pay id=p1 value=card><label for=p1>신용카드</label>
+ <input type=radio name=pay id=p2 value=bank><label for=p2>무통장입금</label>
+</div>
+<p>입금은행 <select id=bank required><option value="">선택하세요</option><option value="kb">국민은행</option></select></p>
+<p><label>입금자명 <input id=dep required></label></p>
+<p><input type=checkbox id=all onchange="document.querySelectorAll('.ag').forEach(c=>c.checked=this.checked)"><label for=all>전체 동의</label></p>
+<p><input type=checkbox class=ag id=a1><label for=a1>구매조건 확인 및 결제 동의 (필수)</label></p>
+<p><input type=checkbox class=ag id=a2><label for=a2>개인정보 수집 동의 (필수)</label></p>
+<button onclick="history.back()">취소</button>
+<button id=go onclick="go()">10,000원 결제하기</button>
+<p id=err></p>
+<script>
+function go() {
+  const pay = document.querySelector('input[name=pay]:checked');
+  if (!pay || !a1.checked || !a2.checked || !bank.value || !dep.value) { err.textContent = '입력 확인'; return; }
+  if (!confirm('주문하시겠습니까?')) return;
+  location = 'done.html?pay=' + pay.value + '&bank=' + bank.value + '&name=' + encodeURIComponent(dep.value);
+}
+</script></body>
