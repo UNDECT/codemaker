@@ -386,6 +386,9 @@ class Engine:
             if self.cfg.idle_notify and self._idle == self.cfg.idle_notify:
                 self._shot("idle")
                 self.notifier.send(f"{self._idle}회 연속으로 맞는 상황이 없습니다. 화면을 확인하세요.")
+            if self.cfg.refresh_on_idle:
+                self.driver.reload()
+                self.emit("refresh", streak=self._idle)
             return "idle"
 
         rule, matches = hit

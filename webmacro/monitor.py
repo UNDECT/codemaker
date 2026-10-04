@@ -119,6 +119,8 @@ class Monitor:
                 self.today["checks"] += 1
                 self.current_rule = None
                 self._set("화면 확인 중 · 맞는 상황 없음 (대기)")
+            elif kind == "refresh":
+                self._set(f"맞는 상황 없음 → 새로고침 ({i['streak']}회째)")
             elif kind == "rule":
                 self.last_check_at = now
                 self.today["checks"] += 1

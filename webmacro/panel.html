@@ -244,6 +244,8 @@ dialog::backdrop{background:rgba(0,0,0,.8)}
       <label>확인 주기(초)</label><input class="num" id="interval" type="number" step="0.5" min="0.2">
       <button class="pri" id="btnSaveSite">저장하고 열기</button>
     </div>
+    <label class="hint" style="display:block;margin-top:8px"><input type="checkbox" id="refresh">
+      맞는 규칙이 없으면 새로고침 (확인 주기마다 → 원하는 색이 뜰 때까지)</label>
     <div id="siteMsg" class="msg"></div>
   </div>
   <div class="card">
@@ -439,10 +441,11 @@ async function loadConfig() {
   const s = c.settings || {};
   if (s.error) msg($('yamlMsg'), '현재 설정 오류: ' + s.error, false);
   $('url').value = s.url || ''; $('w').value = s.width || 1920; $('h').value = s.height || 1080; $('interval').value = s.interval || 2;
+  $('refresh').checked = !!s.refresh;
 }
 $('btnSaveSite').onclick = async () => {
   try {
-    const r = await api('/api/settings', {url:$('url').value.trim(), width:+$('w').value, height:+$('h').value, interval:+$('interval').value});
+    const r = await api('/api/settings', {url:$('url').value.trim(), width:+$('w').value, height:+$('h').value, interval:+$('interval').value, refresh:$('refresh').checked});
     $('yaml').value = r.yaml; msg($('siteMsg'), r.message, true); shot();
   } catch (e) { msg($('siteMsg'), e.message, false); }
 };

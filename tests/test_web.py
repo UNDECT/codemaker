@@ -86,7 +86,8 @@ def test_full_flow(panel):
     assert code == 400
     code, r = req(base, "/api/settings", {"url": site, "width": 800, "height": 600, "interval": 0.2})
     assert code == 200, r
-    assert req(base, "/api/config")[1]["settings"] == {"url": site, "width": 800, "height": 600, "interval": 0.2}
+    assert req(base, "/api/config")[1]["settings"] == {"url": site, "width": 800, "height": 600, "interval": 0.2,
+                                                            "refresh": False}
 
     # 서버 화면 (PNG, 설정한 크기)
     code, png = req(base, "/api/screenshot")
@@ -406,3 +407,28 @@ def test_typo_site_rejected_and_unreachable_site_keeps_screen(panel, monkeypatch
     assert code == 200 and png[:4] == b"\x89PNG"
     assert web._short(RuntimeError("Page.goto: net::ERR_NAME_NOT_RESOLVED at https://naver.con/\nCall log")) \
         == "주소를 찾을 수 없습니다 (오타이거나 없는 사이트): https://naver.con/"
+
+
+SHOP = """<!doctype html><meta charset=utf-8><body style="margin:0;background:#fff">
+<script>
+const n = +(localStorage.n || 0) + 1; localStorage.n = n;   // 3번째 열었을 때 아이템 등장
+if (n >= 3) document.write('<button style="position:absolute;left:100px;top:100px;width:80px;height:40px;'
+  + 'background:#8E24AA;border:0" onclick="document.body.innerHTML=\\'선택됨\\'"></button>');
+</script></body>"""
+
+
+def test_refresh_until_color_appears(panel):
+    base, ctl, tmp = panel
+    (tmp / "shop.html").write_text(SHOP, encoding="utf-8")
+    site = (tmp / "shop.html").as_uri()
+    assert req(base, "/api/settings", {"url": site, "width": 400, "height": 300, "interval": 0.2,
+                                       "refresh": True})[0] == 200
+    assert req(base, "/api/config")[1]["settings"]["refresh"] is True
+    text = ("url: " + json.dumps(site) + "\nviewport: {width: 400, height: 300}\ninterval: 0.2\n"
+            "refresh_on_idle: true\nrules:\n"
+            "  - name: 끝\n    when: {text: 선택됨}\n    then: [{do: screenshot}]\n    after: stop\n"
+            "  - name: 아이템\n    when: {color: '#8E24AA'}\n    then: [{do: click_match}]\n")
+    assert req(base, "/api/config", {"yaml": text})[0] == 200
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "업무 종료")
+    assert int(ctl.call(lambda: ctl.driver.page.evaluate("localStorage.n"))) >= 3

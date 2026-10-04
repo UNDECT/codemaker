@@ -521,7 +521,7 @@ class Controller:
                 pats.pop(then, None)
         return self.edit_config(change)
 
-    def set_site(self, url: str, width=None, height=None, interval=None) -> str:
+    def set_site(self, url: str, width=None, height=None, interval=None, refresh=None) -> str:
         """업무 사이트 주소 설정. 연습 사이트에서 바뀌면 연습용 규칙은 지운다(실제 사이트를 잘못 누르지 않게)."""
         check_host(url)
         text = self.read_text()
@@ -534,6 +534,8 @@ class Controller:
             text = set_top_level(text, "viewport", {"width": int(width), "height": int(height)})
         if interval:
             text = set_top_level(text, "interval", float(interval))
+        if refresh is not None:
+            text = set_top_level(text, "refresh_on_idle", bool(refresh))
         cleared = False
         if _is_demo(str(old_url)) and not _is_demo(url):
             data = yaml.safe_load(text) or {}
@@ -678,7 +680,7 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                     try:
                         cfg = ctl.load()
                         info = {"url": cfg.url, "width": cfg.viewport[0], "height": cfg.viewport[1],
-                                "interval": cfg.interval}
+                                "interval": cfg.interval, "refresh": cfg.refresh_on_idle}
                     except Exception as e:
                         info = {"error": str(e)}
                     self._json({"yaml": text, "settings": info, "path": str(ctl.config_path)})
@@ -731,7 +733,8 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                     ok = config_mod.is_web_url(url) or (ctl.allow_file and url.startswith("file://"))
                     if not ok:
                         raise config_mod.ConfigError("주소는 http:// 또는 https:// 로 시작해야 합니다")
-                    message = ctl.set_site(url, body.get("width"), body.get("height"), body.get("interval"))
+                    message = ctl.set_site(url, body.get("width"), body.get("height"), body.get("interval"),
+                                           body.get("refresh"))
                     self._json({"ok": True, "yaml": ctl.read_text(), "message": message + _restart_note(ctl)})
                 elif path == "/api/rule/add":
                     cfg = ctl.add_rule(body)

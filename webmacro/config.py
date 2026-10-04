@@ -79,6 +79,7 @@ class Config:
     patterns: dict[str, list[dict]]
     viewport: tuple[int, int] = (1920, 1080)
     interval: float = 2.0
+    refresh_on_idle: bool = False  # 맞는 규칙이 없으면 새로고침 (interval 초마다) → 원하는 색이 뜰 때까지
     idle_notify: int = 0       # 이 횟수만큼 연속으로 아무 규칙도 안 맞으면 알림(0=끔)
     max_actions_per_minute: int = 120
     max_same_rule: int = 50    # 같은 규칙 연속 실행 한도 → 넘으면 pause
@@ -269,6 +270,7 @@ def parse(data: dict, base_dir: Path | None = None) -> Config:
         patterns=patterns,
         viewport=(int(vp.get("width", 1920)), int(vp.get("height", 1080))),
         interval=float(data.get("interval", 2.0)),
+        refresh_on_idle=_bool(data.get("refresh_on_idle", False), "refresh_on_idle"),
         idle_notify=int(data.get("idle_notify", 0)),
         max_actions_per_minute=int(data.get("max_actions_per_minute", 120)),
         max_same_rule=int(data.get("max_same_rule", 50)),
@@ -285,6 +287,12 @@ def parse(data: dict, base_dir: Path | None = None) -> Config:
         user_agent=data.get("user_agent"),
         base_dir=base_dir or Path.cwd(),
     )
+
+
+def _bool(v, key):
+    if not isinstance(v, bool):
+        raise ConfigError(f"{key} 는 true 또는 false")
+    return v
 
 
 def _check_run_cycles(patterns):
