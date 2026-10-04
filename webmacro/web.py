@@ -301,6 +301,7 @@ class Controller:
             raise Busy("이미 실행 중입니다")
         self.load()  # 설정 오류면 여기서 ConfigError
         self._stop.clear()
+        self.last_result = ""
         self.running, self.dry_run = True, dry_run
         self.status = "시작 중"
         if not dry_run:
@@ -315,6 +316,7 @@ class Controller:
 
     def _run_macro(self, dry_run: bool):
         eng = None
+        outcome = ""
         try:
             cfg = self.load()
             # 사이트 접속 재시도 (중지 가능)
@@ -346,23 +348,25 @@ class Controller:
             if not dry_run:
                 self.notifier.send(f"매크로 시작: {cfg.url}")
             result = eng.run(restart_driver=restart)
-            self.last_result = "업무 종료" if result == "stop" else result
+            outcome = "업무 종료" if result == "stop" else result
             if not dry_run:
                 self._remember(autostart=False)
         except StopRequested:
-            self.last_result = "사용자 중지"
+            outcome = "사용자 중지"
             log.info("사용자 중지")
         except Exception as e:
-            self.last_result = f"오류: {e}"
+            outcome = f"오류: {e}"
             log.exception("매크로 오류")
             self.notifier.send(f"매크로 오류로 멈춤: {e}")
         finally:
             if eng:
                 eng._save_session()
-            self.monitor.finished(self.last_result or "멈춤")
-            self.running = False
-            self.status = "대기"
+            self.monitor.finished(outcome or "멈춤")
             self._stop.clear()
+            self.status = "대기"
+            self.running = False
+            # 마지막에 기록: 결과가 보이는 순간엔 기록·상태 정리가 모두 끝나 있다
+            self.last_result = outcome or "멈춤"
 
     def _remember(self, **kw):
         try:
