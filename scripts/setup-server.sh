@@ -62,16 +62,14 @@ fi
 say "빌드·실행 (처음엔 10분 넘게 걸릴 수 있습니다)"
 docker compose --profile https up -d --build
 
-# 6. 제대로 떴는지 확인 (켜졌다 꺼지기를 반복하거나 인증서가 안 나오면 원인을 보여준다)
+# 6. 제대로 떴는지 확인 — 서버 안에서 실제로 HTTPS 로그인 화면을 받아 본다
+#    (인증서를 이미 받아 둔 경우엔 '발급' 로그가 다시 안 나오므로 로그 대신 실제 접속으로 판단)
 say "동작 확인 (최대 2분)"
 ok=""
 for i in $(seq 1 24); do
   sleep 5
-  running="$(docker compose --profile https ps --status running --services 2>/dev/null)"
-  if echo "$running" | grep -qx webmacro && echo "$running" | grep -qx caddy \
-     && docker compose --profile https logs caddy 2>&1 | grep -q "certificate obtained successfully\|certificate is valid\|skipping automatic certificate management"; then
-    ok=1; break
-  fi
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/login" || true)"
+  if [ "$code" = "200" ]; then ok=1; break; fi
   if docker compose --profile https logs caddy 2>&1 | grep -qi "rateLimited\|too many certificates"; then break; fi
 done
 if [ -z "$ok" ]; then
