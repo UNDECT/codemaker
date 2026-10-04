@@ -32,6 +32,10 @@ class Driver:
     def save_session(self): ...
     def auto_step(self, opts: dict) -> dict: raise NotImplementedError
 
+    def blocked(self, phrases) -> str | None:
+        """사이트가 접근을 막은 화면이면 그 이유(문구)를, 아니면 None."""
+        return next((p for p in phrases if self.has_text(p)), None)
+
 
 def _chromium_path() -> str | None:
     """WEBMACRO_CHROMIUM 환경변수 > 기본 설치 경로. None이면 Playwright 기본값."""
@@ -50,6 +54,7 @@ class PlaywrightDriver(Driver):
         self._pw = self._browser = self._ctx = self.page = None
         self.accept_dialogs = False   # 자동 진행 중엔 '주문하시겠습니까?' 같은 확인창을 수락
         self.last_dialog = ""
+        self.last_status = 0          # 마지막 페이지 이동의 HTTP 상태 (403·429 = 차단)
 
     @property
     def session_path(self) -> Path | None:
@@ -85,7 +90,7 @@ class PlaywrightDriver(Driver):
         self._ctx = self._browser.new_context(**ctx_kw)
         self.page = self._ctx.new_page()
         self._ctx.on("page", self._on_popup)
-        self.page.on("dialog", self._on_dialog)
+        self._watch(self.page)
         try:
             self.page.goto(self.cfg.url, wait_until="domcontentloaded")
         except Exception:
@@ -174,10 +179,30 @@ class PlaywrightDriver(Driver):
         except Exception:
             pass
 
+    def _watch(self, page):
+        page.on("dialog", self._on_dialog)
+
+        def on_response(r):
+            try:
+                if r.request.is_navigation_request() and r.frame == page.main_frame:
+                    self.last_status = r.status
+            except Exception:
+                pass
+        page.on("response", on_response)
+
     def _on_popup(self, page):
         """새 창(주문·결제 창)이 열리면 그 창으로 옮겨 간다."""
-        page.on("dialog", self._on_dialog)
+        self._watch(page)
         self.page = page
+
+    def blocked(self, phrases) -> str | None:
+        if self.last_status in (403, 429):
+            return f"HTTP {self.last_status}"
+        try:
+            text = self.page.evaluate("() => (document.body ? document.body.innerText : '').replace(/\\s+/g, '')")
+        except Exception:
+            return None
+        return next((p for p in phrases if "".join(p.split()) in text), None)
 
     def auto_step(self, opts: dict) -> dict:
         """화면을 읽어 할 일 하나를 하고 결과를 돌려준다 (autoflow.SCAN_JS 참고)."""

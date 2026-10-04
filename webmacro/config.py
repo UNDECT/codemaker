@@ -45,6 +45,13 @@ AFTER = {"continue", "stop", "pause"}
 PICK = {"largest", "topmost", "leftmost", "first"}
 
 
+# 사이트가 자동 접속을 막았을 때 흔히 나오는 문구 → 보이면 즉시 멈춤 (계속 두드리면 계정·IP가 더 오래 막힌다)
+DEFAULT_BLOCK_TEXTS = ["비정상적인 접근", "비정상적인 요청", "비정상적인 활동", "비정상 접근", "접근이 차단", "접근이 제한",
+                       "접속이 차단", "접속이 제한", "자동화된 요청", "매크로 사용", "과도한 요청", "요청이 너무 많",
+                       "Access Denied", "Too Many Requests", "unusual traffic"]
+MIN_REFRESH_SEC = 3.0   # 새로고침하며 기다릴 때 최소 간격
+
+
 class ConfigError(ValueError):
     pass
 
@@ -81,6 +88,7 @@ class Config:
     patterns: dict[str, list[dict]]
     viewport: tuple[int, int] = (1920, 1080)
     interval: float = 2.0
+    block_texts: list[str] = field(default_factory=lambda: list(DEFAULT_BLOCK_TEXTS))
     refresh_on_idle: bool = False  # 맞는 규칙이 없으면 새로고침 (interval 초마다) → 원하는 색이 뜰 때까지
     idle_notify: int = 0       # 이 횟수만큼 연속으로 아무 규칙도 안 맞으면 알림(0=끔)
     max_actions_per_minute: int = 120
@@ -272,6 +280,7 @@ def parse(data: dict, base_dir: Path | None = None) -> Config:
         patterns=patterns,
         viewport=(int(vp.get("width", 1920)), int(vp.get("height", 1080))),
         interval=float(data.get("interval", 2.0)),
+        block_texts=_str_list(data.get("block_texts", DEFAULT_BLOCK_TEXTS), "block_texts"),
         refresh_on_idle=_bool(data.get("refresh_on_idle", False), "refresh_on_idle"),
         idle_notify=int(data.get("idle_notify", 0)),
         max_actions_per_minute=int(data.get("max_actions_per_minute", 120)),
@@ -289,6 +298,12 @@ def parse(data: dict, base_dir: Path | None = None) -> Config:
         user_agent=data.get("user_agent"),
         base_dir=base_dir or Path.cwd(),
     )
+
+
+def _str_list(v, key):
+    if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
+        raise ConfigError(f"{key} 는 글자 목록이어야 합니다")
+    return [x.strip() for x in v]
 
 
 def _bool(v, key):

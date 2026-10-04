@@ -17,7 +17,7 @@ import re
 
 from . import autoflow, ocr
 from .color import find_blobs, pick_blob
-from .config import Config, Condition, Rule, expand_env, is_web_url
+from .config import MIN_REFRESH_SEC, Config, Condition, Rule, expand_env, is_web_url
 from .driver import Driver
 from .notify import Notifier
 
@@ -68,6 +68,7 @@ class Engine:
         self._acted = False           # 이번 규칙에서 클릭·입력을 했는지
         self._driver_started = clock()
         self._last_prune = None
+        self._last_refresh = None
         self.orders = 0               # 자동 진행으로 완료한 주문 수 (이번 실행)
 
     def emit(self, kind: str, **info):
@@ -296,6 +297,10 @@ class Engine:
             while True:
                 if self.clock() > end:
                     raise StepFailed(f"{timeout:g}초 안에 주문 완료 화면이 안 나옴")
+                why = d.blocked(self.cfg.block_texts) if self.cfg.block_texts else None
+                if why:
+                    self._blocked(why)
+                    raise _Stop(f"사이트 차단 감지('{why}')로 멈춤")
                 url = d.url()
                 if url != last_url:
                     opts["payDone"], last_url = False, url
@@ -436,7 +441,10 @@ class Engine:
 
     # ---------- 한 번 확인 ----------
     def tick(self) -> str:
-        """반환: 'idle' | 'ran:<규칙>' | 'stop' | 'pause' | 'error'"""
+        """반환: 'idle' | 'ran:<규칙>' | 'stop' | 'pause' | 'error' | 'blocked'"""
+        why = self.driver.blocked(self.cfg.block_texts) if self.cfg.block_texts else None
+        if why:
+            return self._blocked(why)
         img = self.driver.screenshot()
         hit = self.evaluate(img)
         if hit is None:
@@ -446,7 +454,9 @@ class Engine:
             if self.cfg.idle_notify and self._idle == self.cfg.idle_notify:
                 self._shot("idle")
                 self.notifier.send(f"{self._idle}회 연속으로 맞는 상황이 없습니다. 화면을 확인하세요.")
-            if self.cfg.refresh_on_idle:
+            now = self.clock()
+            if self.cfg.refresh_on_idle and (self._last_refresh is None or now - self._last_refresh >= MIN_REFRESH_SEC):
+                self._last_refresh = now
                 self.driver.reload()
                 self.emit("refresh", streak=self._idle)
             return "idle"
@@ -510,6 +520,15 @@ class Engine:
             return self._pause(f"규칙 '{rule.name}' 실행 후 일시정지", notify=False)
         return f"ran:{rule.name}"
 
+    def _blocked(self, why: str) -> str:
+        """사이트가 접근을 막음 → 더 두드리지 않고 멈춘다."""
+        shot = self._shot("blocked")
+        msg = f"사이트가 접근을 막았습니다('{why}') → 매크로를 멈췄습니다. 한동안 쉬었다가 직접 접속해 확인하세요."
+        log.warning(msg)
+        self.emit("blocked", reason=why, shot=shot.name if shot else None)
+        self.notifier.send(msg + (f" / {shot.name}" if shot else ""))
+        return "blocked"
+
     def _pause(self, reason: str, notify: bool = True) -> str:
         shot = None
         if notify:
@@ -547,6 +566,8 @@ class Engine:
                 except Exception:
                     log.exception("브라우저 재시작 실패")
                 continue
+            if result == "blocked":
+                return "blocked"
             if result == "stop":
                 self._save_session()
                 if not self.cfg.recheck_minutes:

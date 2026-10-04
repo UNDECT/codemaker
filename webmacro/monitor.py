@@ -119,6 +119,10 @@ class Monitor:
                 self.today["checks"] += 1
                 self.current_rule = None
                 self._set("화면 확인 중 · 맞는 상황 없음 (대기)")
+            elif kind == "blocked":
+                self.last_error = {"t": now, "text": f"사이트가 접근을 막음: {i['reason']}", "shot": i.get("shot")}
+                self._set(f"사이트 차단 감지 → 멈춤 ({i['reason']})")
+                self._add("error", f"사이트가 접근을 막음('{i['reason']}') → 멈춤", shot=i.get("shot"))
             elif kind == "auto":
                 self._set(i["text"])
                 self._add("rule", i["text"])

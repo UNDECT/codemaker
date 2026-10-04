@@ -544,3 +544,40 @@ def test_scroll_page_and_inner_box(panel):
     # 목록 밖에서 휠 → 페이지가 내려감
     assert req(base, "/api/browser", {"action": "scroll", "dy": 300, "x": 300, "y": 200})[0] == 200
     assert page_y()[0] > 0
+
+
+def test_blocked_page_stops_macro(panel):
+    base, ctl, tmp = panel
+    (tmp / "blocked.html").write_text("<meta charset=utf-8><h1>비정상적인 접근입니다</h1>"
+                                      "<button style='width:200px;height:80px;background:#E53935'></button>", encoding="utf-8")
+    site = (tmp / "blocked.html").as_uri()
+    text = ("url: " + json.dumps(site) + "\nrefresh_on_idle: true\nrules:\n"
+            "  - name: 빨강\n    when: {color: '#E53935'}\n    then: [{do: click_match}]\n")
+    assert req(base, "/api/config", {"yaml": text})[0] == 200
+    assert req(base, "/api/start", {})[0] == 200
+    wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "사이트 차단 감지로 멈춤")
+    st = req(base, "/api/state")[1]
+    assert not st["running"] and "접근을 막음" in st["monitor"]["last_error"]["text"]
+
+
+def test_http_429_counts_as_blocked(panel):
+    from http.server import BaseHTTPRequestHandler
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(429); self.send_header("Content-Type", "text/html"); self.end_headers()
+            self.wfile.write(b"<h1>slow down</h1>")
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base, ctl, tmp = panel
+    try:
+        text = f"url: http://127.0.0.1:{srv.server_address[1]}/\nrules:\n  - name: a\n    when: {{text: zzz}}\n    then: [{{do: reload}}]\n"
+        assert req(base, "/api/config", {"yaml": text})[0] == 200
+        assert req(base, "/api/start", {})[0] == 200
+        wait_for(lambda: req(base, "/api/state")[1]["last_result"] == "사이트 차단 감지로 멈춤")
+        assert any("HTTP 429" in m for m in ctl.notifier.messages)
+    finally:
+        srv.shutdown()

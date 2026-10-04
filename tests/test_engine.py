@@ -364,3 +364,31 @@ def test_goto_file_blocked_when_not_allowed():
     eng.allow_file = False
     drv.texts.add("go")
     assert eng.tick() == "error" and any("http/https" in m for m in n.messages)
+
+
+def test_stops_immediately_when_site_blocks_access():
+    eng, drv, n, _ = engine(RED_THEN_DONE)
+    drv.img[20:40, 100:140] = (255, 0, 0)
+    drv.texts.add("비정상적인 접근이 감지되었습니다")
+    assert eng.run(max_ticks=50) == "blocked"
+    assert drv.clicks() == [] and drv.reloads == 0          # 더 누르거나 새로고침하지 않는다
+    assert any("접근을 막았습니다" in m for m in n.messages)
+
+
+def test_block_texts_configurable_and_can_be_turned_off():
+    eng, drv, n, _ = engine({**RED_THEN_DONE, "block_texts": ["점검 중"]})
+    drv.texts.add("비정상적인 접근")
+    assert eng.tick() == "idle"
+    drv.texts.add("서버 점검 중입니다")
+    assert eng.tick() == "blocked"
+    eng, drv, n, _ = engine({**RED_THEN_DONE, "block_texts": []})
+    drv.texts.add("비정상적인 접근")
+    assert eng.tick() == "idle"
+    with pytest.raises(Exception, match="block_texts"):
+        engine({**RED_THEN_DONE, "block_texts": "x"})
+
+
+def test_refresh_while_waiting_is_not_faster_than_minimum():
+    eng, drv, n, clk = engine({**RED_THEN_DONE, "refresh_on_idle": True, "interval": 0.5})
+    eng.run(max_ticks=20)            # 20번 × 0.5초 = 10초
+    assert 3 <= drv.reloads <= 4     # 3초에 한 번 이하

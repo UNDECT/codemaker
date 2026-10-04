@@ -394,7 +394,7 @@ class Controller:
             if not dry_run:
                 self.notifier.send(f"매크로 시작: {cfg.url}")
             result = eng.run(restart_driver=restart)
-            outcome = "업무 종료" if result == "stop" else result
+            outcome = {"stop": "업무 종료", "blocked": "사이트 차단 감지로 멈춤"}.get(result, result)
             if not dry_run:
                 self._remember(autostart=False)
         except StopRequested:
