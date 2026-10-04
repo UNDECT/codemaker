@@ -32,12 +32,23 @@ if not exist ".venv\installed.txt" (
 )
 
 if not exist data mkdir data
+rem 휴대폰(Tailscale)에서 접속할 수 있게 비밀번호를 처음 한 번 만든다
+if not exist "data\password.txt" (
+  "%PY%" -c "import secrets;print(secrets.token_hex(5))" > "data\password.txt" || goto :fail
+)
+set /p WEBMACRO_PANEL_PASSWORD=<"data\password.txt"
 echo.
-echo  관리 화면: http://127.0.0.1:8080   (이 창을 닫으면 매크로도 꺼집니다)
+echo  ===========================================================
+echo   이 PC에서:   http://127.0.0.1:8080
+echo   휴대폰에서:  http://[Tailscale 앱에 나온 이 PC 주소]:8080
+echo   비밀번호:    %WEBMACRO_PANEL_PASSWORD%
+echo   (이 창을 닫으면 매크로도 꺼집니다)
+echo  ===========================================================
+echo  처음 실행 때 "Windows 보안 경고"가 뜨면 [액세스 허용]을 누르세요.
 echo  화면 글자 인식(OCR)을 쓰려면 Tesseract를 따로 설치하세요 (README 참고).
 echo.
 start "" cmd /c "timeout /t 4 >nul & start http://127.0.0.1:8080"
-"%PY%" -m webmacro panel data\config.yaml
+"%PY%" -m webmacro panel data\config.yaml --host 0.0.0.0
 pause
 exit /b 0
 
