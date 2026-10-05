@@ -261,6 +261,7 @@ pre#log{margin:0;max-height:300px;overflow:auto;font:12px/1.4 ui-monospace,Conso
   <div class="list" style="margin-top:10px">
     <button class="item" id="btnSession"><span class="ico">🔑</span><span class="t"><b>로그인 상태 저장</b><small>여기서 로그인한 뒤 누르면 매크로도 로그인된 상태로 시작</small></span></button>
     <button class="item" id="btnSetSite"><span class="ico">🏠</span><span class="t"><b>지금 주소를 시작 사이트로</b><small id="siteNow">-</small></span></button>
+    <button class="item" id="btnDiag"><span class="ico">🩺</span><span class="t"><b>접속 진단</b><small>매크로가 쓰는 IP·통신사 확인 + 사이트를 3번 열어 막히는지 확인</small></span></button>
     <button class="item" id="btnTest"><span class="ico">🧪</span><span class="t"><b>지금 화면 판정</b><small>어떤 매크로가 실행될지 (누르지 않음)</small></span></button>
   </div>
 </section>
@@ -581,6 +582,16 @@ $('btnSetSite').onclick = async () => {
   const u = normUrl($('addr').value); if (!u) return;
   if (!await confirmSheet('시작 사이트로 저장할까요?', u + '\n\n매크로는 항상 이 주소에서 시작합니다.', '저장')) return;
   try { const r = await api('/api/settings', {url: u}); toast(r.message); loadConfig(); loadRules(); } catch (e) { toast(e.message); }
+};
+$('btnDiag').onclick = async () => {
+  toast('진단 중… (30초~1분)');
+  try {
+    const r = await api('/api/diagnose', {rounds: 3});
+    const lines = r.rounds.map(x => `${x.round}차: IP ${x.ip || '?'}` + (x.org ? ` (${x.org})` : '') +
+      (x.site_error ? ` · 접속 실패: ${x.site_error}` : ` · HTTP ${x.status ?? '?'} · ` + (x.blocked ? `❌ 차단 '${x.blocked}'` : '✅ 정상')) +
+      (x.title ? ` · 제목 '${x.title}'` : ''));
+    sheet('접속 진단 결과', {text: r.verdict + '\n\n' + lines.join('\n') + '\n\n사이트: ' + r.url, cancel: null});
+  } catch (e) { sheet('진단 실패', {text: e.message, cancel: null}); }
 };
 $('btnTest').onclick = async () => {
   try {

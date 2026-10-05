@@ -294,6 +294,51 @@ class Controller:
             return d.url()
         return self.call(fn)
 
+    def diagnose(self, rounds: int = 3, gap: float = 5) -> dict:
+        """접속 진단: 매크로 브라우저가 쓰는 공인 IP·통신사, 업무 사이트를 여러 번 열어 막히는지 기록.
+        (확인만 한다. 차단을 피해 가는 동작은 하지 않음)"""
+        if self.running:
+            raise Busy("매크로 실행 중에는 진단할 수 없습니다. 먼저 중지하세요.")
+        rounds = max(1, min(5, int(rounds)))
+
+        def fn():
+            d = self._ensure_driver()
+            cfg = self.load()
+            page = d._ctx.new_page()
+            out = []
+            try:
+                for n in range(rounds):
+                    if n:
+                        time.sleep(gap)
+                    r = {"round": n + 1, "ip": None, "org": None, "where": None}
+                    for u in IP_URLS:
+                        try:
+                            page.goto(u, wait_until="domcontentloaded", timeout=15000)
+                            info = json.loads(page.inner_text("body"))
+                            r["ip"] = info.get("ip")
+                            r["org"] = info.get("org") or info.get("isp")
+                            r["where"] = ", ".join(x for x in (info.get("city"), info.get("country")) if x) or None
+                            if r["ip"]:
+                                break
+                        except Exception as e:
+                            r["ip_error"] = _short(e)
+                    try:
+                        resp = page.goto(cfg.url, wait_until="domcontentloaded", timeout=20000)
+                        time.sleep(2)   # 차단 문구가 늦게 뜨는 사이트
+                        r["status"] = resp.status if resp else None
+                        r["title"] = page.title()[:80]
+                        text = "".join(page.inner_text("body").split())
+                        r["blocked"] = next((p for p in cfg.block_texts if "".join(p.split()) in text), None)
+                        if not r["blocked"] and r["status"] in (403, 429):
+                            r["blocked"] = f"HTTP {r['status']}"
+                    except Exception as e:
+                        r["site_error"] = _short(e)
+                    out.append(r)
+            finally:
+                page.close()
+            return {"url": cfg.url, "rounds": out, "verdict": _verdict(out)}
+        return self.call(fn, timeout=60 + rounds * (gap + 50))
+
     def test_rules(self) -> dict:
         """지금 화면에서 어떤 규칙이 맞는지 (아무것도 누르지 않음)."""
         def fn():
@@ -765,6 +810,8 @@ def make_handler(ctl: Controller, logbuf: LogBuffer, password: str | None, auth:
                 elif path == "/api/browser":
                     url = ctl.browser_action(body)
                     self._json({"ok": True, "url": url})
+                elif path == "/api/diagnose":
+                    self._json(ctl.diagnose(int(body.get("rounds", 3)), max(0.0, min(30.0, float(body.get("gap", 5))))))
                 elif path == "/api/test":
                     self._json(ctl.test_rules())
                 elif path == "/api/ocr":
@@ -880,6 +927,35 @@ NET_ERRORS = {
 }
 TLD_TYPOS = {"con": "com", "cmo": "com", "ocm": "com", "comm": "com", "co": "com", "nte": "net",
              "nett": "net", "ogr": "org", "kt": "kr", "ke": "kr", "co.ke": "co.kr", "co.kt": "co.kr"}
+
+
+IP_URLS = ["https://ipinfo.io/json", "https://api.ipify.org?format=json"]
+DATACENTER = ("cloud", "hosting", "data center", "datacenter", "amazon", "aws", "google", "microsoft", "azure",
+              "oracle", "digitalocean", "vultr", "linode", "ovh", "hetzner", "smileserv", "iwinv", "cafe24",
+              "gabia", "naver cloud", "kt cloud", "server")
+HOME_ISP = ("korea telecom", "kt corporation", "sk broadband", "lg powercomm", "lg dacom", "lg uplus", "lg u+",
+            "dreamline", "hcn", "lg hellovision", "skylife", "cj hellovision", "tbroad", "sk telecom")
+
+
+def _verdict(rounds: list) -> str:
+    org = next((r["org"] for r in rounds if r.get("org")), "") or ""
+    low = org.lower()
+    kind = "home" if any(k in low for k in HOME_ISP) else "dc" if any(k in low for k in DATACENTER) else "?"
+    blocked = [r for r in rounds if r.get("blocked")]
+    errors = [r for r in rounds if r.get("site_error")]
+    ips = {r["ip"] for r in rounds if r.get("ip")}
+    head = (f"공인 IP {', '.join(sorted(ips)) or '확인 못 함'} · {org or '통신사 확인 못 함'}"
+            + {"home": " (가정용 회선)", "dc": " (서버·데이터센터 회선)", "?": ""}[kind])
+    if errors and len(errors) == len(rounds):
+        return head + " → 사이트에 접속 자체가 안 됨: " + errors[0]["site_error"]
+    if not blocked:
+        return head + f" → {len(rounds)}번 모두 차단 없음"
+    if kind == "dc":
+        return head + f" → {len(blocked)}/{len(rounds)}번 차단. 서버 IP라서 막히는 것으로 보입니다 (집 PC에서 실행하세요)"
+    if kind == "home":
+        return head + (f" → {len(blocked)}/{len(rounds)}번 차단. 집 IP인데도 막힘 → IP 문제가 아니라 "
+                       "사이트가 자동 실행 자체를 막는 것으로 보입니다")
+    return head + f" → {len(blocked)}/{len(rounds)}번 차단 ('{blocked[0]['blocked']}')"
 
 
 def _short(e: Exception) -> str:

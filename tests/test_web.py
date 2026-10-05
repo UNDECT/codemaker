@@ -581,3 +581,47 @@ def test_http_429_counts_as_blocked(panel):
         assert any("HTTP 429" in m for m in ctl.notifier.messages)
     finally:
         srv.shutdown()
+
+
+def test_diagnose_reports_ip_and_blocking(panel, monkeypatch):
+    from http.server import BaseHTTPRequestHandler
+
+    from webmacro import web
+    state = {"n": 0}
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/ip"):
+                body = json.dumps({"ip": "211.36.1.2", "org": "AS4766 Korea Telecom", "city": "Seoul", "country": "KR"})
+                ctype = "application/json"
+            else:
+                state["n"] += 1   # 1번은 브라우저 시작 때 열림 → 진단 2차부터 막힘
+                body = "<meta charset=utf-8><title>업무</title>" + ("비정상적인 접근입니다" if state["n"] >= 3 else "환영합니다")
+                ctype = "text/html; charset=utf-8"
+            self.send_response(200); self.send_header("Content-Type", ctype); self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base_srv = f"http://127.0.0.1:{srv.server_address[1]}"
+    monkeypatch.setattr(web, "IP_URLS", [base_srv + "/ip"])
+    base, ctl, tmp = panel
+    try:
+        assert req(base, "/api/config", {"yaml": f"url: {base_srv}/site\nrules: []\n"})[0] == 200
+        code, r = req(base, "/api/diagnose", {"rounds": 3, "gap": 0})
+        assert code == 200, r
+        assert [x["ip"] for x in r["rounds"]] == ["211.36.1.2"] * 3
+        assert [bool(x["blocked"]) for x in r["rounds"]] == [False, True, True]
+        assert "가정용 회선" in r["verdict"] and "2/3번 차단" in r["verdict"] and "자동 실행 자체" in r["verdict"]
+    finally:
+        srv.shutdown()
+
+
+def test_verdict_datacenter_and_clean():
+    from webmacro.web import _verdict
+    dc = [{"ip": "49.247.133.9", "org": "AS-SMILESERV", "blocked": "비정상적인 접근"}]
+    assert "서버·데이터센터" in _verdict(dc) and "집 PC에서" in _verdict(dc)
+    ok = [{"ip": "1.2.3.4", "org": "SK Broadband", "blocked": None}] * 3
+    assert "3번 모두 차단 없음" in _verdict(ok)
