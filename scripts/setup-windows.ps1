@@ -84,7 +84,14 @@ try {
     }
   }
 
-  Say "6/6 바로가기 · 절전 끄기"
+  Say "6/6 방화벽 · 바로가기 · 절전 끄기"
+  # 휴대폰(Tailscale 100.64.0.0/10)에서 오는 8080 연결만 허용. 관리자 확인 창이 뜨면 [예]
+  $rule = 'webmacro panel (Tailscale only)'
+  if (-not (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue)) {
+    $fw = "New-NetFirewallRule -DisplayName '$rule' -Direction Inbound -Protocol TCP -LocalPort 8080 -RemoteAddress 100.64.0.0/10 -Action Allow -Profile Any"
+    try { Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile', '-Command', $fw; Write-Host "  방화벽: Tailscale 에서 오는 8080 허용" }
+    catch { Write-Host "  [!] 방화벽 규칙을 못 만들었습니다 (관리자 확인 거절?)" -ForegroundColor Yellow }
+  }
   $bat = Join-Path $Dest 'start-windows.bat'
   $ws = New-Object -ComObject WScript.Shell
   foreach ($dir in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Startup'))) {

@@ -63,6 +63,7 @@ Tailscale에 로그인하지 않은 상태로 실행하면 그 PC 안(`127.0.0.1
 | 증상 | 해결 |
 |---|---|
 | 휴대폰에서 주소가 안 열림 | 휴대폰·PC 모두 Tailscale 연결 확인 / PC의 검은 창이 켜져 있는지 / `:8080` 붙였는지 |
+| 휴대폰에서만 안 열림 (PC에선 열림) | 방화벽: 관리자 PowerShell 에서 `New-NetFirewallRule -DisplayName 'webmacro panel (Tailscale only)' -Direction Inbound -Protocol TCP -LocalPort 8080 -RemoteAddress 100.64.0.0/10 -Action Allow -Profile Any` |
 | 그래도 안 열림 | PC: 제어판 → Windows Defender 방화벽 → 앱 허용 → **Python** 의 개인·공용 체크 |
 | "파이썬이 없습니다" | A-1에서 "Add python.exe to PATH" 체크 안 함 → 파이썬 다시 설치하며 체크 |
 | 설치 중 오류 | 검은 창 캡처해서 보내기 |
