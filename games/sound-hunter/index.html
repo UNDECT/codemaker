@@ -10,10 +10,9 @@
   html, body {
     margin: 0; height: 100%; background: #000; color: #555;
     font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-    overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+    overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
   }
-  #pad { position: fixed; inset: 0; display: flex; }
-  #pad > div { flex: 1; }
+  #pad { position: fixed; inset: 0; }
   #intro {
     position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center;
     align-items: center; text-align: center; padding: 16px; box-sizing: border-box; pointer-events: none;
@@ -27,11 +26,12 @@
 </head>
 <body>
 <!-- 화면은 일부러 비워 둡니다. 게임은 소리로만 진행됩니다. -->
-<div id="pad" aria-hidden="true"><div data-dir="-1"></div><div data-dir="0"></div><div data-dir="1"></div></div>
+<div id="pad" aria-hidden="true"></div>
 <div id="intro">
   <h1>소리 사냥꾼</h1>
   <p>🎧 이어폰을 끼고 눈을 감으세요.</p>
-  <p>괴물 발소리가 들리는 쪽을 공격하세요.<br>← 왼쪽 · ↑ 앞 · → 오른쪽<br>(휴대폰: 화면 왼쪽 · 가운데 · 오른쪽 누르기)</p>
+  <p>괴물 소리가 들리는 쪽을 공격하세요.<br>← 왼쪽 · → 오른쪽 · ↑ 위 · ↓ 아래 · 스페이스 앞<br>(휴대폰: 그 방향으로 밀기, 앞은 톡 누르기)</p>
+  <p>위에서는 날개 소리, 아래에서는 땅 파는 소리가 납니다.</p>
   <p>종소리는 친구입니다. 공격하지 마세요.</p>
   <p><b>스페이스 / 화면 누르기</b>로 시작</p>
 </div>
@@ -77,9 +77,24 @@ function initAudio() {
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 }
 
-function panner(pan) {
-  const p = ac.createStereoPanner ? ac.createStereoPanner() : ac.createGain();
-  if (p.pan) p.pan.value = pan;
+// 머리 중심 기준 위치 (x: 오른쪽, y: 위, z: 뒤 — 앞은 -z)
+const DIRS = {
+  left:  { name: "왼쪽",   pos: [-1, 0, -0.15] },
+  front: { name: "앞",     pos: [0, 0, -1] },
+  right: { name: "오른쪽", pos: [1, 0, -0.15] },
+  up:    { name: "위",     pos: [0, 0.95, -0.3] },
+  down:  { name: "아래",   pos: [0, -0.95, -0.3] },
+};
+const FLAT = ["left", "front", "right"];
+const ALL = ["left", "front", "right", "up", "down"];
+
+// HRTF 3D 입체음향. 음량은 따로 조절하므로 거리 감쇠는 끔
+function panner(dir) {
+  const [x, y, z] = DIRS[dir].pos;
+  const p = ac.createPanner();
+  p.panningModel = "HRTF"; p.distanceModel = "linear"; p.rolloffFactor = 0;
+  if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; }
+  else p.setPosition(x, y, z);
   p.connect(master);
   return p;
 }
@@ -107,15 +122,20 @@ function tone(t, freq, dur, { type = "sine", gain = 0.3, out = master, slideTo }
 
 const sfx = {
   // 방향 안내용 짧은 소리
-  ping(pan) { const t = ac.currentTime; const p = panner(pan); tone(t, 660, 0.25, { gain: 0.4, out: p }); },
-  hit(pan) {
-    const t = ac.currentTime; const p = panner(pan);
+  ping(dir) {
+    const t = ac.currentTime; const p = panner(dir);
+    if (dir === "up") tone(t, 900, 0.35, { gain: 0.4, slideTo: 1800, out: p });
+    else if (dir === "down") tone(t, 440, 0.35, { gain: 0.5, slideTo: 180, out: p });
+    else tone(t, 660, 0.25, { gain: 0.4, out: p });
+  },
+  hit(dir) {
+    const t = ac.currentTime; const p = panner(dir);
     noise(t, 0.18, { freq: 2500, q: 0.7, gain: 0.9, out: p });
     tone(t, 400, 0.3, { type: "square", gain: 0.25, slideTo: 60, out: p });
     tone(t + 0.08, 880, 0.15, { gain: 0.2, out: master });
   },
-  swing(pan) {
-    const t = ac.currentTime; const p = panner(pan);
+  swing(dir) {
+    const t = ac.currentTime; const p = panner(dir);
     const f = noise(t, 0.22, { freq: 600, q: 2, gain: 0.35, out: p });
     f.frequency.exponentialRampToValueAtTime(3000, t + 0.2);
   },
@@ -126,7 +146,7 @@ const sfx = {
     if (navigator.vibrate) navigator.vibrate(300);
   },
   friendOk() { const t = ac.currentTime; [784, 988, 1175, 1568].forEach((f, i) => tone(t + i * 0.09, f, 0.35, { gain: 0.2 })); },
-  friendHurt(pan) { const t = ac.currentTime; const p = panner(pan); tone(t, 600, 0.6, { type: "triangle", gain: 0.35, slideTo: 150, out: p }); },
+  friendHurt(dir) { const t = ac.currentTime; const p = panner(dir); tone(t, 600, 0.6, { type: "triangle", gain: 0.35, slideTo: 150, out: p }); },
   levelUp() { const t = ac.currentTime; [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.12, f, 0.3, { type: "triangle", gain: 0.25 })); },
   gameOver() { const t = ac.currentTime; [392, 330, 262, 196].forEach((f, i) => tone(t + i * 0.25, f, 0.45, { type: "triangle", gain: 0.3 })); },
   heartbeat(strength) {
@@ -136,38 +156,50 @@ const sfx = {
 };
 
 // ---------- 다가오는 존재 (괴물 / 친구) ----------
-const DIR_NAME = { "-1": "왼쪽", "0": "앞", "1": "오른쪽" };
-
+// 이어폰에서는 HRTF만으로 위·아래 구분이 어려워서, 방향마다 소리 종류도 다르게 냄
+//   옆·앞: 걷는 괴물 · 위: 날개 달린 괴물 · 아래: 땅 파는 괴물
 class Walker {
   constructor(dir, kind, travelSec) {
     this.dir = dir; this.kind = kind;          // kind: "monster" | "friend"
     this.travel = travelSec; this.age = 0; this.dist = 1; this.alive = true;
     this.out = ac.createGain(); this.out.gain.value = 0.05;
     this.lp = ac.createBiquadFilter(); this.lp.type = "lowpass"; this.lp.frequency.value = 500;
-    this.lp.connect(this.out).connect(panner(dir * 0.95));
-    this.nextStep = 0;
+    this.lp.connect(this.out).connect(panner(dir));
+    this.nextStep = 0; this.stepN = 0;
     this.pitch = 0.85 + Math.random() * 0.3;
     if (kind === "monster") {
-      // 낮게 그르렁거리는 소리
-      this.osc = ac.createOscillator(); this.osc.type = "sawtooth"; this.osc.frequency.value = 70 * this.pitch;
-      const lfo = ac.createOscillator(); lfo.frequency.value = 6 + Math.random() * 4;
+      // 그르렁 소리: 위는 높은 끽끽 소리, 아래는 아주 낮은 울림
+      const base = dir === "up" ? 260 : dir === "down" ? 42 : 70;
+      this.osc = ac.createOscillator(); this.osc.type = dir === "up" ? "square" : "sawtooth";
+      this.osc.frequency.value = base * this.pitch;
+      const lfo = ac.createOscillator(); lfo.frequency.value = dir === "up" ? 14 : dir === "down" ? 3 : 6 + Math.random() * 4;
       const lfoG = ac.createGain(); lfoG.gain.value = 0.5;
-      this.growl = ac.createGain(); this.growl.gain.value = 0.5;
+      this.growl = ac.createGain(); this.growl.gain.value = dir === "up" ? 0.2 : 0.5;
       lfo.connect(lfoG).connect(this.growl.gain);
       this.osc.connect(this.growl).connect(this.lp);
       this.osc.start(); lfo.start(); this.lfo = lfo;
     }
   }
   step(t) {
-    if (this.kind === "monster") {
-      noise(t, 0.09, { freq: 140 * this.pitch, q: 1.2, gain: 1.2, out: this.lp });
-      noise(t, 0.04, { freq: 900, q: 1, gain: 0.4, out: this.lp });
-    } else {
+    const p = this.pitch;
+    if (this.kind === "friend") {
       // 친구: 맑은 종소리 + 가벼운 발걸음
-      tone(t, 1320 * this.pitch, 0.4, { gain: 0.35, out: this.lp });
-      tone(t, 1980 * this.pitch, 0.25, { gain: 0.15, out: this.lp });
+      tone(t, 1320 * p, 0.4, { gain: 0.35, out: this.lp });
+      tone(t, 1980 * p, 0.25, { gain: 0.15, out: this.lp });
       noise(t, 0.03, { freq: 2500, q: 2, gain: 0.3, out: this.lp });
+    } else if (this.dir === "up") {
+      // 날갯짓: 위로 쓸려 올라가는 바람 소리
+      const f = noise(t, 0.16, { freq: 500 * p, q: 1.5, gain: 1.0, out: this.lp });
+      f.frequency.exponentialRampToValueAtTime(2200 * p, t + 0.14);
+    } else if (this.dir === "down") {
+      // 땅 파기: 낮은 쿵 + 흙 긁는 소리
+      noise(t, 0.2, { freq: 90 * p, type: "lowpass", gain: 1.6, out: this.lp });
+      if (this.stepN % 2) noise(t + 0.05, 0.12, { freq: 350 * p, q: 3, gain: 0.7, out: this.lp });
+    } else {
+      noise(t, 0.09, { freq: 140 * p, q: 1.2, gain: 1.2, out: this.lp });
+      noise(t, 0.04, { freq: 900, q: 1, gain: 0.4, out: this.lp });
     }
+    this.stepN++;
   }
   update(dt) {
     this.age += dt;
@@ -175,10 +207,16 @@ class Walker {
     const near = 1 - this.dist;
     const t = ac.currentTime;
     this.out.gain.setTargetAtTime(0.06 + near * near * 0.95, t, 0.05);
-    this.lp.frequency.setTargetAtTime(this.kind === "friend" ? 2500 + near * 6000 : 300 + near * 4000, t, 0.05);
+    // 멀면 먹먹하게. 위는 밝게, 아래는 늘 먹먹하게
+    const cutoff = this.kind === "friend" ? 2500 + near * 6000
+      : this.dir === "up" ? 1500 + near * 7000
+      : this.dir === "down" ? 200 + near * 900
+      : 300 + near * 4000;
+    this.lp.frequency.setTargetAtTime(cutoff, t, 0.05);
     if (this.age >= this.nextStep) {
       this.step(t);
-      this.nextStep = this.age + (this.kind === "friend" ? 0.45 : 0.22 + this.dist * 0.35);
+      const gap = this.kind === "friend" ? 0.45 : this.dir === "up" ? 0.16 + this.dist * 0.14 : 0.22 + this.dist * 0.35;
+      this.nextStep = this.age + gap;
     }
     return this.dist <= 0;
   }
@@ -199,21 +237,21 @@ const setBest = v => { try { localStorage.setItem(BEST_KEY, v); } catch {} };
 
 const S = { mode: "menu", score: 0, lives: 3, level: 1, kills: 0, walkers: [], nextSpawn: 0, cooldown: 0, paused: false, beat: 0 };
 
-function travelTime() { return Math.max(1.4, 4.2 - (S.level - 1) * 0.35); }
+function travelTime() { return Math.max(1.5, 4.4 - (S.level - 1) * 0.32); }
 
 function spawn() {
   const busy = new Set(S.walkers.map(w => w.dir));
-  const free = [-1, 0, 1].filter(d => !busy.has(d));
+  const free = (S.level >= 2 ? ALL : FLAT).filter(d => !busy.has(d));
   if (!free.length) return;
   const dir = free[Math.floor(Math.random() * free.length)];
-  const friend = S.level >= 3 && Math.random() < 0.25;
+  const friend = S.level >= 4 && Math.random() < 0.25;
   S.walkers.push(new Walker(dir, friend ? "friend" : "monster", friend ? travelTime() * 1.2 : travelTime()));
 }
 
 function scheduleSpawn() {
-  // 레벨 5부터는 가끔 두 마리가 동시에 다가옴
-  const max = S.level >= 5 ? 2 : 1;
-  if (S.nextSpawn <= 0 && S.walkers.length < max) S.nextSpawn = 0.7 + Math.random() * (S.level >= 5 ? 0.9 : 1.2);
+  // 레벨 6부터는 가끔 두 마리가 동시에 다가옴
+  const max = S.level >= 6 ? 2 : 1;
+  if (S.nextSpawn <= 0 && S.walkers.length < max) S.nextSpawn = 0.7 + Math.random() * (S.level >= 6 ? 0.9 : 1.2);
 }
 
 function removeWalker(w) {
@@ -233,7 +271,7 @@ async function levelUp() {
   S.level++;
   sfx.levelUp();
   await wait(500);
-  if (S.mode === "play") say(`레벨 ${S.level}` + (S.level === 3 ? ". 이제 종소리 친구가 와요. 공격하지 마세요" : S.level === 5 ? ". 이제 두 마리씩 와요" : ""));
+  if (S.mode === "play") say(`레벨 ${S.level}` + (S.level === 2 ? ". 이제 위와 아래에서도 와요. 날개 소리는 위, 땅 파는 소리는 아래" : S.level === 4 ? ". 이제 종소리 친구가 와요. 공격하지 마세요" : S.level === 6 ? ". 이제 두 마리씩 와요" : ""));
 }
 
 function strike(dir) {
@@ -279,15 +317,31 @@ function tick() {
 }
 setInterval(tick, 25);
 
+// 괴물 소리를 1.6초 동안 미리 들려줌
+async function demo(dir) {
+  const w = new Walker(dir, "monster", 3);
+  w.age = 1.4;
+  const id = setInterval(() => w.update(0.025), 25);
+  await wait(1600);
+  clearInterval(id); w.stop();
+  await wait(300);
+}
+
 async function tutorial() {
   S.mode = "tutorial";
   await say("소리 사냥꾼. 이어폰을 끼고 눈을 감으세요.");
-  for (const d of [-1, 0, 1]) {
+  for (const d of ALL) {
     if (S.mode !== "tutorial") return;
-    sfx.ping(d); await wait(350); await say(DIR_NAME[d], { rate: 1.3 }); await wait(250);
+    sfx.ping(d); await wait(400); await say(DIRS[d].name, { rate: 1.3 }); await wait(250);
+  }
+  for (const [d, text] of [["front", "걷는 괴물"], ["up", "위에는 날개 달린 괴물"], ["down", "아래에는 땅 파는 괴물"]]) {
+    if (S.mode !== "tutorial") return;
+    await say(text);
+    if (S.mode !== "tutorial") return;
+    await demo(d);
   }
   if (S.mode !== "tutorial") return;
-  await say("괴물 발소리가 들리는 쪽 화살표를 누르세요. 휴대폰은 화면의 왼쪽, 가운데, 오른쪽을 누르세요. 종소리는 친구니까 공격하지 마세요. 시작합니다.");
+  await say("소리 나는 쪽 화살표를 누르세요. 앞은 스페이스. 휴대폰은 그 방향으로 화면을 밀고, 앞은 톡 누르세요. 종소리는 친구니까 공격하지 마세요. 시작합니다.");
   if (S.mode === "tutorial") startGame();
 }
 
@@ -305,7 +359,7 @@ async function endGame() {
   const record = S.score > best;
   if (record) setBest(S.score);
   await wait(1100);
-  await say(`게임 끝. 점수 ${S.score}점, 레벨 ${S.level}. ` + (record ? "최고 기록입니다!" : `최고 기록은 ${best}점.`) + " 다시 하려면 스페이스나 화면을 누르세요.");
+  await say(`게임 끝. 점수 ${S.score}점, 레벨 ${S.level}. ` + (record ? "최고 기록입니다!" : `최고 기록은 ${best}점.`) + " 다시 하려면 스페이스를 누르거나 화면을 톡 누르세요.");
 }
 
 function tellStatus() { say(`점수 ${S.score}, 목숨 ${S.lives}, 레벨 ${S.level}`); }
@@ -326,26 +380,47 @@ function begin() {
 }
 
 // ---------- 입력 ----------
+const KEYS = {
+  ArrowLeft: "left", a: "left", A: "left",
+  ArrowRight: "right", d: "right", D: "right",
+  ArrowUp: "up", w: "up", W: "up",
+  ArrowDown: "down", s: "down", S: "down",
+  " ": "front", Enter: "front", f: "front", F: "front",
+};
 document.addEventListener("keydown", e => {
   const k = e.key;
   if ([" ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(k)) e.preventDefault();
   if (e.repeat) return;
   if (S.mode !== "play") { if (k === " " || k === "Enter") begin(); return; }
-  if (k === "ArrowLeft" || k === "a" || k === "A") strike(-1);
-  else if (k === "ArrowUp" || k === "w" || k === "W" || k === "ArrowDown" || k === "s" || k === "S") strike(0);
-  else if (k === "ArrowRight" || k === "d" || k === "D") strike(1);
+  if (KEYS[k]) strike(KEYS[k]);
   else if (k === "r" || k === "R") tellStatus();
   else if (k === "p" || k === "P" || k === "Escape") togglePause();
 });
 
-document.getElementById("pad").addEventListener("pointerdown", e => {
+// 휴대폰: 밀기(스와이프)로 왼쪽·오른쪽·위·아래, 톡 누르면 앞, 두 손가락이면 상태 안내
+const pad = document.getElementById("pad");
+const touches = new Map();
+let multi = false;
+pad.addEventListener("pointerdown", e => {
   e.preventDefault();
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size >= 2 && !multi) { multi = true; if (S.mode === "play" && !S.paused) tellStatus(); }
+});
+function pointerEnd(e) {
+  const t0 = touches.get(e.pointerId);
+  touches.delete(e.pointerId);
+  if (!t0) return;
+  if (multi) { if (!touches.size) multi = false; return; }
+  if (e.type === "pointercancel") return;
   if (S.mode !== "play") { begin(); return; }
   if (S.paused) { togglePause(); return; }
-  strike(+e.target.dataset.dir);
-});
-// 휴대폰: 두 손가락으로 누르면 상태 안내
-document.addEventListener("touchstart", e => { if (e.touches.length === 2 && S.mode === "play") tellStatus(); });
+  const dx = e.clientX - t0.x, dy = e.clientY - t0.y;
+  if (Math.hypot(dx, dy) < 30) strike("front");
+  else if (Math.abs(dx) > Math.abs(dy)) strike(dx < 0 ? "left" : "right");
+  else strike(dy < 0 ? "up" : "down");
+}
+pad.addEventListener("pointerup", pointerEnd);
+pad.addEventListener("pointercancel", pointerEnd);
 document.addEventListener("visibilitychange", () => { if (document.hidden && S.mode === "play" && !S.paused) togglePause(); });
 </script>
 </body>
