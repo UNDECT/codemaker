@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>소리 사냥꾼</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; height: 100%; background: #000; color: #555;
+    font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #pad { position: fixed; inset: 0; }
+  #intro {
+    position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center;
+    align-items: center; text-align: center; padding: 16px; box-sizing: border-box; pointer-events: none;
+    line-height: 1.6; font-size: 15px;
+  }
+  #intro h1 { color: #888; font-size: 22px; margin: 0 0 12px; }
+  #intro p { margin: 4px 0; max-width: 420px; }
+  body.playing #intro { display: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<!-- 화면은 일부러 비워 둡니다. 게임은 소리로만 진행됩니다. -->
+<div id="pad" aria-hidden="true"></div>
+<div id="intro">
+  <h1>소리 사냥꾼</h1>
+  <p>🎧 이어폰을 끼고 눈을 감으세요.</p>
+  <p>괴물 소리가 들리는 쪽을 공격하세요.<br>← 왼쪽 · → 오른쪽 · ↑ 위 · ↓ 아래 · 스페이스 앞<br>(휴대폰: 그 방향으로 밀기, 앞은 톡 누르기)</p>
+  <p>위에서는 날개 소리, 아래에서는 땅 파는 소리가 납니다.</p>
+  <p>종소리는 친구입니다. 공격하지 마세요.</p>
+  <p><b>스페이스 / 화면 누르기</b>로 시작</p>
+</div>
+<div id="live" class="sr" aria-live="assertive"></div>
+
+<script>
+"use strict";
+
+// ---------- 음성 안내 ----------
+const live = document.getElementById("live");
+let koVoice = null;
+function pickVoice() {
+  const vs = speechSynthesis.getVoices();
+  koVoice = vs.find(v => v.lang && v.lang.toLowerCase().startsWith("ko")) || null;
+}
+if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+function say(text, { interrupt = true, rate = 1.1 } = {}) {
+  live.textContent = text;
+  if (!("speechSynthesis" in window)) return Promise.resolve();
+  if (interrupt) speechSynthesis.cancel();
+  return new Promise(resolve => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ko-KR"; u.rate = rate;
+    if (koVoice) u.voice = koVoice;
+    u.onend = u.onerror = resolve;
+    speechSynthesis.speak(u);
+    setTimeout(resolve, 600 + text.length * 180); // 일부 브라우저는 onend가 안 옴
+  });
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- 소리 합성 ----------
+let ac, master, noiseBuf;
+function initAudio() {
+  if (ac) { ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.9;
+  const comp = ac.createDynamicsCompressor();
+  master.connect(comp).connect(ac.destination);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+}
+
+// 머리 중심 기준 위치 (x: 오른쪽, y: 위, z: 뒤 — 앞은 -z)
+const DIRS = {
+  left:  { name: "왼쪽",   pos: [-1, 0, -0.15] },
+  front: { name: "앞",     pos: [0, 0, -1] },
+  right: { name: "오른쪽", pos: [1, 0, -0.15] },
+  up:    { name: "위",     pos: [0, 0.95, -0.3] },
+  down:  { name: "아래",   pos: [0, -0.95, -0.3] },
+};
+const FLAT = ["left", "front", "right"];
+const ALL = ["left", "front", "right", "up", "down"];
+
+// HRTF 3D 입체음향. 음량은 따로 조절하므로 거리 감쇠는 끔
+function panner(dir) {
+  const [x, y, z] = DIRS[dir].pos;
+  const p = ac.createPanner();
+  p.panningModel = "HRTF"; p.distanceModel = "linear"; p.rolloffFactor = 0;
+  if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; }
+  else p.setPosition(x, y, z);
+  p.connect(master);
+  return p;
+}
+
+function noise(t, dur, { freq = 800, q = 1, type = "bandpass", gain = 0.5, out = master } = {}) {
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  s.connect(f).connect(g).connect(out);
+  s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
+  return f;
+}
+
+function tone(t, freq, dur, { type = "sine", gain = 0.3, out = master, slideTo } = {}) {
+  const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(out); o.start(t); o.stop(t + dur + 0.05);
+}
+
+const sfx = {
+  // 방향 안내용 짧은 소리
+  ping(dir) {
+    const t = ac.currentTime; const p = panner(dir);
+    if (dir === "up") tone(t, 900, 0.35, { gain: 0.4, slideTo: 1800, out: p });
+    else if (dir === "down") tone(t, 440, 0.35, { gain: 0.5, slideTo: 180, out: p });
+    else tone(t, 660, 0.25, { gain: 0.4, out: p });
+  },
+  hit(dir) {
+    const t = ac.currentTime; const p = panner(dir);
+    noise(t, 0.18, { freq: 2500, q: 0.7, gain: 0.9, out: p });
+    tone(t, 400, 0.3, { type: "square", gain: 0.25, slideTo: 60, out: p });
+    tone(t + 0.08, 880, 0.15, { gain: 0.2, out: master });
+  },
+  swing(dir) {
+    const t = ac.currentTime; const p = panner(dir);
+    const f = noise(t, 0.22, { freq: 600, q: 2, gain: 0.35, out: p });
+    f.frequency.exponentialRampToValueAtTime(3000, t + 0.2);
+  },
+  hurt() {
+    const t = ac.currentTime;
+    tone(t, 120, 0.5, { type: "sawtooth", gain: 0.5, slideTo: 40 });
+    noise(t, 0.4, { freq: 200, type: "lowpass", gain: 1 });
+    if (navigator.vibrate) navigator.vibrate(300);
+  },
+  friendOk() { const t = ac.currentTime; [784, 988, 1175, 1568].forEach((f, i) => tone(t + i * 0.09, f, 0.35, { gain: 0.2 })); },
+  friendHurt(dir) { const t = ac.currentTime; const p = panner(dir); tone(t, 600, 0.6, { type: "triangle", gain: 0.35, slideTo: 150, out: p }); },
+  levelUp() { const t = ac.currentTime; [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.12, f, 0.3, { type: "triangle", gain: 0.25 })); },
+  gameOver() { const t = ac.currentTime; [392, 330, 262, 196].forEach((f, i) => tone(t + i * 0.25, f, 0.45, { type: "triangle", gain: 0.3 })); },
+  heartbeat(strength) {
+    const t = ac.currentTime;
+    tone(t, 55, 0.12, { gain: strength }); tone(t + 0.16, 50, 0.14, { gain: strength * 0.8 });
+  },
+};
+
+// ---------- 다가오는 존재 (괴물 / 친구) ----------
+// 이어폰에서는 HRTF만으로 위·아래 구분이 어려워서, 방향마다 소리 종류도 다르게 냄
+//   옆·앞: 걷는 괴물 · 위: 날개 달린 괴물 · 아래: 땅 파는 괴물
+class Walker {
+  constructor(dir, kind, travelSec) {
+    this.dir = dir; this.kind = kind;          // kind: "monster" | "friend"
+    this.travel = travelSec; this.age = 0; this.dist = 1; this.alive = true;
+    this.out = ac.createGain(); this.out.gain.value = 0.05;
+    this.lp = ac.createBiquadFilter(); this.lp.type = "lowpass"; this.lp.frequency.value = 500;
+    this.lp.connect(this.out).connect(panner(dir));
+    this.nextStep = 0; this.stepN = 0;
+    this.pitch = 0.85 + Math.random() * 0.3;
+    if (kind === "monster") {
+      // 그르렁 소리: 위는 높은 끽끽 소리, 아래는 아주 낮은 울림
+      const base = dir === "up" ? 260 : dir === "down" ? 42 : 70;
+      this.osc = ac.createOscillator(); this.osc.type = dir === "up" ? "square" : "sawtooth";
+      this.osc.frequency.value = base * this.pitch;
+      const lfo = ac.createOscillator(); lfo.frequency.value = dir === "up" ? 14 : dir === "down" ? 3 : 6 + Math.random() * 4;
+      const lfoG = ac.createGain(); lfoG.gain.value = 0.5;
+      this.growl = ac.createGain(); this.growl.gain.value = dir === "up" ? 0.2 : 0.5;
+      lfo.connect(lfoG).connect(this.growl.gain);
+      this.osc.connect(this.growl).connect(this.lp);
+      this.osc.start(); lfo.start(); this.lfo = lfo;
+    }
+  }
+  step(t) {
+    const p = this.pitch;
+    if (this.kind === "friend") {
+      // 친구: 맑은 종소리 + 가벼운 발걸음
+      tone(t, 1320 * p, 0.4, { gain: 0.35, out: this.lp });
+      tone(t, 1980 * p, 0.25, { gain: 0.15, out: this.lp });
+      noise(t, 0.03, { freq: 2500, q: 2, gain: 0.3, out: this.lp });
+    } else if (this.dir === "up") {
+      // 날갯짓: 위로 쓸려 올라가는 바람 소리
+      const f = noise(t, 0.16, { freq: 500 * p, q: 1.5, gain: 1.0, out: this.lp });
+      f.frequency.exponentialRampToValueAtTime(2200 * p, t + 0.14);
+    } else if (this.dir === "down") {
+      // 땅 파기: 낮은 쿵 + 흙 긁는 소리
+      noise(t, 0.2, { freq: 90 * p, type: "lowpass", gain: 1.6, out: this.lp });
+      if (this.stepN % 2) noise(t + 0.05, 0.12, { freq: 350 * p, q: 3, gain: 0.7, out: this.lp });
+    } else {
+      noise(t, 0.09, { freq: 140 * p, q: 1.2, gain: 1.2, out: this.lp });
+      noise(t, 0.04, { freq: 900, q: 1, gain: 0.4, out: this.lp });
+    }
+    this.stepN++;
+  }
+  update(dt) {
+    this.age += dt;
+    this.dist = Math.max(0, 1 - this.age / this.travel);
+    const near = 1 - this.dist;
+    const t = ac.currentTime;
+    this.out.gain.setTargetAtTime(0.06 + near * near * 0.95, t, 0.05);
+    // 멀면 먹먹하게. 위는 밝게, 아래는 늘 먹먹하게
+    const cutoff = this.kind === "friend" ? 2500 + near * 6000
+      : this.dir === "up" ? 1500 + near * 7000
+      : this.dir === "down" ? 200 + near * 900
+      : 300 + near * 4000;
+    this.lp.frequency.setTargetAtTime(cutoff, t, 0.05);
+    if (this.age >= this.nextStep) {
+      this.step(t);
+      const gap = this.kind === "friend" ? 0.45 : this.dir === "up" ? 0.16 + this.dist * 0.14 : 0.22 + this.dist * 0.35;
+      this.nextStep = this.age + gap;
+    }
+    return this.dist <= 0;
+  }
+  stop() {
+    this.alive = false;
+    const t = ac.currentTime;
+    this.out.gain.cancelScheduledValues(t);
+    this.out.gain.setTargetAtTime(0, t, 0.03);
+    if (this.osc) { this.osc.stop(t + 0.2); this.lfo.stop(t + 0.2); }
+    setTimeout(() => this.out.disconnect(), 400);
+  }
+}
+
+// ---------- 게임 진행 ----------
+const BEST_KEY = "sound-hunter-best";
+const getBest = () => { try { return +localStorage.getItem(BEST_KEY) || 0; } catch { return 0; } };
+const setBest = v => { try { localStorage.setItem(BEST_KEY, v); } catch {} };
+
+const S = { mode: "menu", score: 0, lives: 3, level: 1, kills: 0, walkers: [], nextSpawn: 0, cooldown: 0, paused: false, beat: 0 };
+
+function travelTime() { return Math.max(1.5, 4.4 - (S.level - 1) * 0.32); }
+
+function spawn() {
+  const busy = new Set(S.walkers.map(w => w.dir));
+  const free = (S.level >= 2 ? ALL : FLAT).filter(d => !busy.has(d));
+  if (!free.length) return;
+  const dir = free[Math.floor(Math.random() * free.length)];
+  const friend = S.level >= 4 && Math.random() < 0.25;
+  S.walkers.push(new Walker(dir, friend ? "friend" : "monster", friend ? travelTime() * 1.2 : travelTime()));
+}
+
+function scheduleSpawn() {
+  // 레벨 6부터는 가끔 두 마리가 동시에 다가옴
+  const max = S.level >= 6 ? 2 : 1;
+  if (S.nextSpawn <= 0 && S.walkers.length < max) S.nextSpawn = 0.7 + Math.random() * (S.level >= 6 ? 0.9 : 1.2);
+}
+
+function removeWalker(w) {
+  w.stop();
+  S.walkers = S.walkers.filter(x => x !== w);
+  scheduleSpawn();
+}
+
+function loseLife() {
+  S.lives--;
+  sfx.hurt();
+  if (S.lives <= 0) { endGame(); return; }
+  say(`아야! 남은 목숨 ${S.lives}`);
+}
+
+async function levelUp() {
+  S.level++;
+  sfx.levelUp();
+  await wait(500);
+  if (S.mode === "play") say(`레벨 ${S.level}` + (S.level === 2 ? ". 이제 위와 아래에서도 와요. 날개 소리는 위, 땅 파는 소리는 아래" : S.level === 4 ? ". 이제 종소리 친구가 와요. 공격하지 마세요" : S.level === 6 ? ". 이제 두 마리씩 와요" : ""));
+}
+
+function strike(dir) {
+  if (S.mode !== "play" || S.paused || S.cooldown > 0) return;
+  const w = S.walkers.find(x => x.dir === dir);
+  if (!w) { sfx.swing(dir); S.cooldown = 0.35; return; }
+  if (w.kind === "friend") {
+    sfx.friendHurt(dir);
+    removeWalker(w);
+    S.lives--;
+    if (S.lives <= 0) { endGame(); return; }
+    say(`친구를 때렸어요. 남은 목숨 ${S.lives}`);
+    return;
+  }
+  sfx.hit(dir);
+  const bonus = Math.round(10 + w.dist * 20) * S.level; // 멀리서 맞힐수록 높은 점수
+  S.score += bonus; S.kills++;
+  removeWalker(w);
+  if (S.kills % 5 === 0) levelUp();
+}
+
+let last = 0;
+function tick() {
+  const now = performance.now() / 1000;
+  const dt = Math.min(0.1, now - (last || now)); last = now;
+  if (S.mode === "play" && !S.paused) {
+    S.cooldown = Math.max(0, S.cooldown - dt);
+    if (S.nextSpawn > 0) { S.nextSpawn -= dt; if (S.nextSpawn <= 0) { S.nextSpawn = 0; spawn(); scheduleSpawn(); } }
+    for (const w of [...S.walkers]) {
+      if (w.update(dt)) {
+        removeWalker(w);
+        if (w.kind === "friend") { sfx.friendOk(); S.score += 15 * S.level; S.lives = Math.min(5, S.lives + 1); say(`친구가 목숨을 줬어요. 목숨 ${S.lives}`); }
+        else loseLife();
+        if (S.mode !== "play") break;
+      }
+    }
+    // 목숨이 적을수록 빨라지는 심장 소리
+    if (S.lives <= 2) {
+      S.beat -= dt;
+      if (S.beat <= 0) { sfx.heartbeat(S.lives === 1 ? 0.5 : 0.25); S.beat = S.lives === 1 ? 0.6 : 1.0; }
+    }
+  }
+}
+setInterval(tick, 25);
+
+// 괴물 소리를 1.6초 동안 미리 들려줌
+async function demo(dir) {
+  const w = new Walker(dir, "monster", 3);
+  w.age = 1.4;
+  const id = setInterval(() => w.update(0.025), 25);
+  await wait(1600);
+  clearInterval(id); w.stop();
+  await wait(300);
+}
+
+async function tutorial() {
+  S.mode = "tutorial";
+  await say("소리 사냥꾼. 이어폰을 끼고 눈을 감으세요.");
+  for (const d of ALL) {
+    if (S.mode !== "tutorial") return;
+    sfx.ping(d); await wait(400); await say(DIRS[d].name, { rate: 1.3 }); await wait(250);
+  }
+  for (const [d, text] of [["front", "걷는 괴물"], ["up", "위에는 날개 달린 괴물"], ["down", "아래에는 땅 파는 괴물"]]) {
+    if (S.mode !== "tutorial") return;
+    await say(text);
+    if (S.mode !== "tutorial") return;
+    await demo(d);
+  }
+  if (S.mode !== "tutorial") return;
+  await say("소리 나는 쪽 화살표를 누르세요. 앞은 스페이스. 휴대폰은 그 방향으로 화면을 밀고, 앞은 톡 누르세요. 종소리는 친구니까 공격하지 마세요. 시작합니다.");
+  if (S.mode === "tutorial") startGame();
+}
+
+function startGame() {
+  speechSynthesis && speechSynthesis.cancel();
+  S.walkers.forEach(w => w.stop());
+  Object.assign(S, { mode: "play", score: 0, lives: 3, level: 1, kills: 0, walkers: [], cooldown: 0, paused: false, beat: 0, nextSpawn: 1.0 });
+}
+
+async function endGame() {
+  S.mode = "over";
+  S.walkers.forEach(w => w.stop()); S.walkers = [];
+  sfx.gameOver();
+  const best = getBest();
+  const record = S.score > best;
+  if (record) setBest(S.score);
+  await wait(1100);
+  await say(`게임 끝. 점수 ${S.score}점, 레벨 ${S.level}. ` + (record ? "최고 기록입니다!" : `최고 기록은 ${best}점.`) + " 다시 하려면 스페이스를 누르거나 화면을 톡 누르세요.");
+}
+
+function tellStatus() { say(`점수 ${S.score}, 목숨 ${S.lives}, 레벨 ${S.level}`); }
+
+function togglePause() {
+  if (S.mode !== "play") return;
+  S.paused = !S.paused;
+  if (S.paused) { ac.suspend(); say("일시정지. 다시 누르면 계속합니다"); }
+  else { ac.resume(); say("계속"); }
+}
+
+function begin() {
+  initAudio();
+  document.body.classList.add("playing");
+  if (S.mode === "menu") tutorial();
+  else if (S.mode === "tutorial") startGame();   // 설명 건너뛰기
+  else if (S.mode === "over") startGame();
+}
+
+// ---------- 입력 ----------
+const KEYS = {
+  ArrowLeft: "left", a: "left", A: "left",
+  ArrowRight: "right", d: "right", D: "right",
+  ArrowUp: "up", w: "up", W: "up",
+  ArrowDown: "down", s: "down", S: "down",
+  " ": "front", Enter: "front", f: "front", F: "front",
+};
+document.addEventListener("keydown", e => {
+  const k = e.key;
+  if ([" ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(k)) e.preventDefault();
+  if (e.repeat) return;
+  if (S.mode !== "play") { if (k === " " || k === "Enter") begin(); return; }
+  if (KEYS[k]) strike(KEYS[k]);
+  else if (k === "r" || k === "R") tellStatus();
+  else if (k === "p" || k === "P" || k === "Escape") togglePause();
+});
+
+// 휴대폰: 밀기(스와이프)로 왼쪽·오른쪽·위·아래, 톡 누르면 앞, 두 손가락이면 상태 안내
+const pad = document.getElementById("pad");
+const touches = new Map();
+let multi = false;
+pad.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size >= 2 && !multi) { multi = true; if (S.mode === "play" && !S.paused) tellStatus(); }
+});
+function pointerEnd(e) {
+  const t0 = touches.get(e.pointerId);
+  touches.delete(e.pointerId);
+  if (!t0) return;
+  if (multi) { if (!touches.size) multi = false; return; }
+  if (e.type === "pointercancel") return;
+  if (S.mode !== "play") { begin(); return; }
+  if (S.paused) { togglePause(); return; }
+  const dx = e.clientX - t0.x, dy = e.clientY - t0.y;
+  if (Math.hypot(dx, dy) < 30) strike("front");
+  else if (Math.abs(dx) > Math.abs(dy)) strike(dx < 0 ? "left" : "right");
+  else strike(dy < 0 ? "up" : "down");
+}
+pad.addEventListener("pointerup", pointerEnd);
+pad.addEventListener("pointercancel", pointerEnd);
+document.addEventListener("visibilitychange", () => { if (document.hidden && S.mode === "play" && !S.paused) togglePause(); });
+</script>
+</body>
+</html>
